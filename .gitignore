@@ -1,0 +1,61 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+*.log
+
+# Virtual Environment
+venv/
+.env/
+ENV/
+env/
+.venv/
+
+# VSCode
+.vscode/
+.settings/
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+
+# MacOS 系統檔案
+.DS_Store
+
+# 圖片生成或臨時檔
+*.png
+*.svg
+*.pdf
+
+# 如果你想要保留生成的 architecture 圖片可以把上面這三行刪掉
+
+# Cache / Temp
+.cache/
+*.tmp
+
+# Python Test / Coverage
+htmlcov/
+.tox/
+.nox/
+.coverage
+.pytest_cache/
+
+# mypy
+.mypy_cache/
+
+# Pycharm
+.idea/
+
+# Env files
+.env
+.env.*
+
+# Others
+*.bak
+*.swp
+
+# Node.js (如果你的前端有用 npm/yarn)
+node_modules/
