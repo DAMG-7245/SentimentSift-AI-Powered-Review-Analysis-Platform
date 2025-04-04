@@ -15,26 +15,11 @@ authors: ko.yun@northeastern.edu
 
 ## Overview
 
-**SentimentSift** is an AI-powered platform designed to filter emotional biases from online reviews and provide objective, fact-based insights for consumers and businesses. 
+**SentimentSift** is an AI-powered platform designed to filter emotional biases from online reviews and provide objective, fact-based insights for consumers and businesses. SentimentSift also providing a curated list of reliable food bloggers. For each trusted blogger, the platform displays a comprehensive list of all restaurants they've previously visited and reviewed, creating a reliable recommendation network that users can trust.
 
 A restaurant owner saying that those who gave the restaurant one-star negative reviews were all saying it took too long to wait, not that the food was bad. So there is an API that can capture the reviews of this store, and then throw it into AI analysis, there should be different results.
 
-### Target Audience
-- Developers
-- Data engineers
-- AI/ML enthusiasts
-
-### What you'll build
-- An end-to-end data pipeline to collect and process reviews
-- AI models to detect sentiment and extract facts
-- A web application to display objective review summaries
-
-### Prerequisites
-- Python basics
-- Familiarity with APIs and ETL pipelines
-- Basic understanding of sentiment analysis models
-- Docker and GitHub basics
-
+![Theme](./img/review.jpg)
 ![Theme](./img/sentimentsift.png)
 
 ---
@@ -73,12 +58,14 @@ _Add an architecture diagram here for visual reference._
 - Fake or manipulated reviews
 - Inconsistent review quality
 - Information overload for users
+- Blogger Credibility
 
 ### Opportunities
 - Enhance objectivity
 - Save users' time
 - Provide businesses with real insights
 - Build trust in online reviews
+- Reliable Food Blogger List
 
 
 ---
@@ -91,7 +78,7 @@ _Add an architecture diagram here for visual reference._
 
 ### Tools & Technologies
 - **ETL:** Airflow, Python (BeautifulSoup, Scrapy)
-- **Storage:** MongoDB, PostgreSQL
+- **Storage:** AWS S3, PostgreSQL
 - **Backend:** FastAPI, Langraph, CrewAI, Docker
 - **Frontend:** Streamlit, Plotly
 

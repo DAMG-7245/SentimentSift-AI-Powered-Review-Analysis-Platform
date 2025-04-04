@@ -28,28 +28,9 @@
                   feedback-link="">
     
       <google-codelab-step label="Overview" duration="0">
-        <p><strong>SentimentSift</strong> is an AI-powered platform designed to filter emotional biases from online reviews and provide objective, fact-based insights for consumers and businesses.</p>
+        <p><strong>SentimentSift</strong> is an AI-powered platform designed to filter emotional biases from online reviews and provide objective, fact-based insights for consumers and businesses. SentimentSift also providing a curated list of reliable food bloggers. For each trusted blogger, the platform displays a comprehensive list of all restaurants they&#39;ve previously visited and reviewed, creating a reliable recommendation network that users can trust.</p>
 <p>A restaurant owner saying that those who gave the restaurant one-star negative reviews were all saying it took too long to wait, not that the food was bad. So there is an API that can capture the reviews of this store, and then throw it into AI analysis, there should be different results.</p>
-<h2 is-upgraded>Target Audience</h2>
-<ul>
-<li>Developers</li>
-<li>Data engineers</li>
-<li>AI/ML enthusiasts</li>
-</ul>
-<h2 is-upgraded>What you&#39;ll build</h2>
-<ul>
-<li>An end-to-end data pipeline to collect and process reviews</li>
-<li>AI models to detect sentiment and extract facts</li>
-<li>A web application to display objective review summaries</li>
-</ul>
-<h2 is-upgraded>Prerequisites</h2>
-<ul>
-<li>Python basics</li>
-<li>Familiarity with APIs and ETL pipelines</li>
-<li>Basic understanding of sentiment analysis models</li>
-<li>Docker and GitHub basics</li>
-</ul>
-<p class="image-container"><img alt="Theme" src="img/d2773f70657e2e23.png"></p>
+<p class="image-container"><img alt="Theme" src="img/sentimentsift.png"><img alt="Theme" src="img/review.jpg"></p>
 
 
       </google-codelab-step>
@@ -89,6 +70,7 @@
 <li>Fake or manipulated reviews</li>
 <li>Inconsistent review quality</li>
 <li>Information overload for users</li>
+<li>Blogger Credibility</li>
 </ul>
 <h2 is-upgraded>Opportunities</h2>
 <ul>
@@ -96,6 +78,7 @@
 <li>Save users&#39; time</li>
 <li>Provide businesses with real insights</li>
 <li>Build trust in online reviews</li>
+<li>Reliable Food Blogger List</li>
 </ul>
 
 
@@ -110,7 +93,7 @@
 <h2 is-upgraded>Tools &amp; Technologies</h2>
 <ul>
 <li><strong>ETL:</strong> Airflow, Python (BeautifulSoup, Scrapy)</li>
-<li><strong>Storage:</strong> MongoDB, PostgreSQL</li>
+<li><strong>Storage:</strong> AWS S3, PostgreSQL</li>
 <li><strong>Backend:</strong> FastAPI, Langraph, CrewAI, Docker</li>
 <li><strong>Frontend:</strong> Streamlit, Plotly</li>
 </ul>

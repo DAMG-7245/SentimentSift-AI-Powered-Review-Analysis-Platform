@@ -10,7 +10,7 @@ and services.
 
 A restaurant owner saying that those who gave the restaurant one-star negative reviews were all saying it took too long to wait, not that the food was bad. So there is an API that can capture the reviews of this store, and then throw it into AI analysis, there should be different results.
 
-SentimentSift is an intelligent review analysis platform that uses advanced AI techniques to filter emotional bias from Google and other platform reviews. Our system provides users with more objective, factual insights about businesses by differentiating between subjective emotional content and objective assessments.
+SentimentSift is an intelligent review analysis platform that uses advanced AI techniques to filter emotional bias from Google and other platform reviews. Our system provides users with more objective, factual insights about businesses by differentiating between subjective emotional content and objective assessments. SentimentSift also providing a curated list of reliable food bloggers. For each trusted blogger, the platform displays a comprehensive list of all restaurants they've previously visited and reviewed, creating a reliable recommendation network that users can trust.
 
 By leveraging natural language processing, sentiment analysis, and large language models, SentimentSift transforms how users interact with online reviews, creating a more reliable information ecosystem for decision-making.
 
@@ -25,6 +25,7 @@ By leveraging natural language processing, sentiment analysis, and large languag
 - **Fact Extraction**: Identifies factual statements separate from opinions
 - **Credibility Scoring**: Rates reviews based on objectivity and helpfulness
 - **Summary Generation**: Creates concise, objective summaries of multiple reviews
+- **Reliable Food Blogger List**: Identifies trustworthy food bloggers and provides access to all businesses they've reviewed
 
 ## 🏗️ System Architecture
 
@@ -32,7 +33,7 @@ SentimentSift uses a modern, scalable architecture:
 
 ```
 ┌───────────────┐    ┌───────────────┐    ┌───────────────────┐
-│ Data Sources  │───>│ Airflow ETL   │───>│ MongoDB/PostgreSQL│
+│ Data Sources  │───>│ Airflow ETL   │───>│   AWS S3 Storage  │
 └───────────────┘    └───────────────┘    └───────────────────┘
                                                    │
 ┌───────────────┐    ┌───────────────┐             │
@@ -47,6 +48,9 @@ SentimentSift uses a modern, scalable architecture:
                      │ Agent System│
                      └─────────────┘
 ```
+
+![Theme](./simplified_sentimentsift_architecture.png)
+
 
 ## 📂 Project Structure
 
@@ -148,6 +152,8 @@ Key endpoints:
 - `POST /analyze`: Submit a review for sentiment analysis
 - `GET /summary/{business_id}`: Get an objective summary of all reviews
 - `GET /metrics/{business_id}`: Get key metrics and insights
+- `GET /bloggers/reliable`: Get a list of reliable food bloggers
+- `GET /bloggers/{username}/reviews`: Get all businesses reviewed by a specific reliable blogger
 
 
 ## 📊 Data Sources
@@ -172,6 +178,7 @@ Our ETL process is managed through Apache Airflow DAGs:
 2. **data_processing_dag**: Cleans and transforms the collected data
 3. **sentiment_analysis_dag**: Runs batch sentiment analysis jobs
 4. **reporting_dag**: Generates periodic insights and reports
+5. **blogger_reliability_dag**: Evaluates and updates food blogger reliability scores
 
 ## 🤖 Agent System
 
