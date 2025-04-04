@@ -47,7 +47,8 @@ Develop a platform that filters emotional content from Google reviews and delive
 - Market researchers
 
 ### Architecture Diagram 
-_Add an architecture diagram here for visual reference._
+![Theme](./simplified_sentimentsift_architecture.png)
+
 
 ---
 
@@ -139,18 +140,10 @@ _Add an architecture diagram here for visual reference._
 
 SentimentSift bridges the gap between emotionally charged reviews and objective insights. By leveraging AI, natural language processing, and data pipelines, you'll build a tool that empowers consumers and businesses alike.
 
-> **Final Exercise:** Deploy application and share demo!
 
 ---
 
-## Next Steps
-- Deploy to cloud (Streamlit Cloud, AWS, etc.)
-- Collect real user feedback
-- Continuously improve sentiment models
-
----
-
-## Credits
+## Information
 - Team: Anuj Rajendraprasad Nene, Sicheng Bao, Yung-Rou Ko
 - Course: 7245 Big-Data Final Project
 
