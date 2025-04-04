@@ -1,5 +1,8 @@
 # SentimentSift: AI-Powered Review Analysis Platform
 
+codelab: https://koyungrou.github.io/Final_SentimentSift/
+
+
 An intelligent review analysis platform that uses advanced natural
 language processing and sentiment analysis to filter emotional content from Google reviews,
 providing users with more objective, factual, and balanced insights about businesses, products,
