@@ -8,9 +8,12 @@ and services.
 
 ## 🔍 Overview
 
+A restaurant owner saying that those who gave the restaurant one-star negative reviews were all saying it took too long to wait, not that the food was bad. So there is an API that can capture the reviews of this store, and then throw it into AI analysis, there should be different results.
+
 SentimentSift is an intelligent review analysis platform that uses advanced AI techniques to filter emotional bias from Google and other platform reviews. Our system provides users with more objective, factual insights about businesses by differentiating between subjective emotional content and objective assessments.
 
 By leveraging natural language processing, sentiment analysis, and large language models, SentimentSift transforms how users interact with online reviews, creating a more reliable information ecosystem for decision-making.
+
 
 
 ## ✨ Features
