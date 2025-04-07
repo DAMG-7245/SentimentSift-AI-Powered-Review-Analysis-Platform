@@ -1,0 +1,270 @@
+
+<!doctype html>
+
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, minimum-scale=1.0, initial-scale=1.0, user-scalable=yes">
+  <meta name="theme-color" content="#4F7DC9">
+  <meta charset="UTF-8">
+  <title>SentimentSift: AI-Powered Review Analysis Platform</title>
+  <link rel="stylesheet" href="//fonts.googleapis.com/css?family=Source+Code+Pro:400|Roboto:400,300,400italic,500,700|Roboto+Mono">
+  <link rel="stylesheet" href="//fonts.googleapis.com/icon?family=Material+Icons">
+  <link rel="stylesheet" href="https://storage.googleapis.com/claat-public/codelab-elements.css">
+  <style>
+    .success {
+      color: #1e8e3e;
+    }
+    .error {
+      color: red;
+    }
+  </style>
+</head>
+<body>
+  <google-codelab-analytics gaid="UA-49880327-14" ga4id=""></google-codelab-analytics>
+  <google-codelab codelab-gaid=""
+                  codelab-ga4id=""
+                  id="docs"
+                  title="SentimentSift: AI-Powered Review Analysis Platform"
+                  environment="web"
+                  feedback-link="">
+    
+      <google-codelab-step label="Overview" duration="0">
+        <p><strong>SentimentSift</strong> is an AI-powered platform designed to filter emotional biases from online reviews and provide objective, fact-based insights for consumers and businesses. SentimentSift also providing a curated list of reliable food bloggers. For each trusted blogger, the platform displays a comprehensive list of all restaurants they&#39;ve previously visited and reviewed, creating a reliable recommendation network that users can trust.</p>
+<p>A restaurant owner saying that those who gave the restaurant one-star negative reviews were all saying it took too long to wait, not that the food was bad. So there is an API that can capture the reviews of this store, and then throw it into AI analysis, there should be different results.</p>
+<p class="image-container"><img alt="Theme" src="img\\4f50ee79a0d3433f.jpg"><img alt="Theme" src="img\\d2773f70657e2e23.png"></p>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="Introduction" duration="0">
+        <h2 is-upgraded><strong>Background</strong></h2>
+<p>In the competitive restaurant industry, customer reviews and social media feedback play a crucial role in shaping perceptions and influencing dining decisions. However, the absence of a unified system to normalize ratings across platforms and extract actionable insights from unstructured data creates challenges for restaurant owners, customers, and market researchers. Reviews often reflect biases and lack a consolidated evaluation of key aspects such as food, service, and ambiance.</p>
+<p>This project aims to address these challenges by developing a tool that consolidates customer feedback from multiple platforms, performs sentiment analysis on reviews, and generates a normalized rating system based on three critical aspects: <strong>Food</strong>, <strong>Service</strong>, and <strong>Ambiance</strong>. Additionally, the project integrates an interactive chatbot powered by <strong>Retrieval-Augmented Generation (RAG)</strong> and <strong>Large Language Models (LLMs)</strong> to provide precise, context-aware responses to user queries.</p>
+<h2 is-upgraded><strong>Objective</strong></h2>
+<p>The goal is to deliver actionable insights to stakeholders through:</p>
+<ul>
+<li><strong>Restaurant Owners</strong>: Brief reports summarizing trends observed in high-performing restaurants.</li>
+<li><strong>Customers</strong>: Consolidated, unbiased ratings for informed dining decisions.</li>
+<li><strong>Market Researchers</strong>: Insights into dining trends and customer preferences.</li>
+<li>An advanced chatbot capable of answering specific questions about restaurants (e.g., cuisine type, amenities, operating hours) using RAG and LLM integration.</li>
+</ul>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="Project Overview" duration="0">
+        <h2 is-upgraded><strong>Scope</strong></h2>
+<h3 is-upgraded><strong>Data Sources</strong></h3>
+<p>The project will use data from:</p>
+<ul>
+<li><strong>Google API</strong>: For reviews and ratings due to its vast dataset.</li>
+<li><strong>Yelp API</strong>: Provides detailed reviews and metadata about restaurants.</li>
+<li><strong>Twitter API</strong>: Acts as a social media analytics tool with free API access.</li>
+</ul>
+<h3 is-upgraded><strong>Technologies</strong></h3>
+<ol type="1">
+<li><strong>PyABSA</strong>: Aspect-based sentiment analysis for extracting sentiment scores for food, service, and ambiance.</li>
+<li><strong>BERTopic</strong>: Extracts recurring themes from customer reviews.</li>
+<li><strong>Pinecone</strong>: Stores vector embeddings with metadata (e.g., restaurant name, location).</li>
+<li><strong>Snowflake</strong>: Used for data preprocessing and validation with dbt support.</li>
+<li><strong>Streamlit</strong>: Provides an interactive UI for querying trends and visualizing insights.</li>
+<li><strong>LangChain &amp; OpenAI GPT-4</strong>: Combines RAG with LLMs for chatbot functionality.</li>
+</ol>
+<h3 is-upgraded><strong>Deliverables</strong></h3>
+<ol type="1">
+<li>Cleaned datasets stored in JSON format in Amazon S3.</li>
+<li>Normalized sentiment scores visualized on a scale of 10/100.</li>
+<li>Tiered summary reports highlighting trends grouped by restaurant rankings.</li>
+<li>An interactive Streamlit interface enabling: <ul>
+<li>Natural language queries.</li>
+<li>Visualization of trends (e.g., top-tier restaurants by cuisine or amenities).</li>
+</ul>
+</li>
+<li>A RAG-powered chatbot integrated with LLMs to answer user queries with contextually relevant responses.</li>
+</ol>
+<h2 is-upgraded><strong>Stakeholders</strong></h2>
+<ul>
+<li><strong>Restaurant Owners:</strong> Gain insights into strengths/weaknesses through actionable reports.</li>
+<li><strong>Market Researchers:</strong> Identify emerging trends in dining preferences using consolidated analytics.</li>
+<li><strong>Customers:</strong> Access unbiased, normalized ratings to make informed dining decisions.</li>
+</ul>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="Problem Statement" duration="0">
+        <h2 is-upgraded><strong>Current Challenges</strong></h2>
+<ol type="1">
+<li>Managing unstructured review data across multiple platforms with inconsistent rating scales.</li>
+<li>Limited tools to extract meaningful insights from customer feedback.</li>
+<li>Inability to identify trends or patterns in high-rated vs low-rated restaurants.</li>
+</ol>
+<h2 is-upgraded><strong>Opportunities</strong></h2>
+<ol type="1">
+<li>Improved decision-making could lead to a 10% increase in customer retention by addressing weaknesses identified through sentiment analysis.</li>
+<li>Enhanced analytics could reduce response time to negative reviews by providing real-time alerts on recurring issues.</li>
+</ol>
+<h2 is-upgraded><strong>Use Cases</strong></h2>
+<ol type="1">
+<li>Consolidated ratings for Boston-based restaurants based on sentiment scores for food, service, and ambiance.</li>
+<li>Tiered summary reports highlighting common themes in customer feedback for high-performing restaurants.</li>
+<li>Interactive querying of restaurant trends via Streamlit UI.</li>
+<li>Chatbot functionality enabling advanced queries such as: <ul>
+<li>&#34;What are the top-rated Italian restaurants in Boston?&#34;</li>
+<li>&#34;Which restaurants are open late with outdoor seating?&#34;</li>
+<li>&#34;What are common complaints about service in low-rated restaurants?&#34;</li>
+</ul>
+</li>
+</ol>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="Methodology" duration="0">
+        <h2 is-upgraded><strong>Data Sources</strong></h2>
+<p>The project will collect structured (restaurant details) and unstructured (reviews) data from Google API, Yelp API, and Twitter API.</p>
+<h3 is-upgraded>Exception Handling:</h3>
+<ul>
+<li>Restaurants with limited reviews or no ratings will be flagged during preprocessing.</li>
+</ul>
+<h2 is-upgraded><strong>Technologies and Tools</strong></h2>
+<ol type="1">
+<li>PyABSA for aspect-based sentiment analysis.</li>
+<li>BERTopic for theme extraction from labeled text generated by PyABSA.</li>
+<li>Pinecone as the vector database for storing embeddings with metadata.</li>
+<li>LangChain &amp; OpenAI GPT-4 for RAG-powered chatbot integration.</li>
+</ol>
+<h2 is-upgraded><strong>Data Pipeline Design</strong></h2>
+<h3 is-upgraded>Workflow Diagram</h3>
+<p>Data Ingestion:</p>
+<p>Collect structured (restaurant details) and unstructured (reviews) data via APIs.</p>
+<p>Data Preprocessing:</p>
+<p>Normalize ratings across platforms; clean text; add metadata.</p>
+<p>Data Storage:</p>
+<p>Store raw JSON files in Amazon S3; stage preprocessed data in Snowflake.</p>
+<p>Sentiment Analysis &amp; Theme Extraction:</p>
+<p>Use PyABSA for aspect-based scoring; feed labeled text into BERTopic.</p>
+<p>Vector Embedding Storage:</p>
+<p>Store embeddings with metadata in Pinecone.</p>
+<p>Chatbot Integration:</p>
+<p>Use LangChain &amp; GPT-4 to build a RAG-powered chatbot for advanced queries.</p>
+<p>Visualization &amp; Querying:</p>
+<p>Develop Streamlit UI for querying trends and visualizing insights.</p>
+<p>text</p>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="Project Plan and Timeline" duration="0">
+        <h2 is-upgraded>Timeline</h2>
+<table>
+<tr><td colspan="1" rowspan="1"><p>Day</p>
+</td><td colspan="1" rowspan="1"><p>Task</p>
+</td><td colspan="1" rowspan="1"><p>Assigned To</p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p>Day 1–2</p>
+</td><td colspan="1" rowspan="1"><p>API integration; initial data collection; store raw JSON files in S3</p>
+</td><td colspan="1" rowspan="1"><p>Data Engineer</p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p>Day 3–4</p>
+</td><td colspan="1" rowspan="1"><p>Data cleaning/preprocessing; Snowflake setup</p>
+</td><td colspan="1" rowspan="1"><p>Data Engineer</p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p>Day 5–6</p>
+</td><td colspan="1" rowspan="1"><p>Sentiment analysis implementation using PyABSA</p>
+</td><td colspan="1" rowspan="1"><p>Machine Learning Engineer</p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p>Day 7</p>
+</td><td colspan="1" rowspan="1"><p>RAG pipeline setup; Pinecone integration; LLM fine-tuning</p>
+</td><td colspan="1" rowspan="1"><p>Machine Learning Engineer</p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p>Day 8–9</p>
+</td><td colspan="1" rowspan="1"><p>Theme extraction using BERTopic</p>
+</td><td colspan="1" rowspan="1"><p>Machine Learning Engineer</p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p>Day 10–11</p>
+</td><td colspan="1" rowspan="1"><p>Streamlit UI development</p>
+</td><td colspan="1" rowspan="1"><p>Frontend Developer</p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p>Day 12–13</p>
+</td><td colspan="1" rowspan="1"><p>Chatbot enhancement with RAG/LLM integration</p>
+</td><td colspan="1" rowspan="1"><p>ML Engineer &amp; Frontend Dev</p>
+</td></tr>
+<tr><td colspan="1" rowspan="1"><p>Day 14</p>
+</td><td colspan="1" rowspan="1"><p>Final testing; deployment</p>
+</td><td colspan="1" rowspan="1"><p>All Team Members</p>
+</td></tr>
+</table>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="Resources and Team" duration="0">
+        <h2 is-upgraded>Personnel</h2>
+<ul>
+<li>Data Engineer: Responsible for API integration, data collection/preprocessing, Snowflake setup.</li>
+<li>Machine Learning Engineer: Implements sentiment analysis (PyABSA), theme extraction (BERTopic), RAG pipeline setup, chatbot enhancement.</li>
+<li>Frontend Developer: Develops the Streamlit UI interface; integrates chatbot functionality.</li>
+</ul>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="Risks and Mitigation Strategies" duration="0">
+        <h2 is-upgraded>Risks</h2>
+<ol type="1">
+<li>API rate limits or geographic restrictions may delay data collection.</li>
+<li>Sparse review data may impact insight accuracy.</li>
+<li>Integration challenges between multiple technologies/tools.</li>
+</ol>
+<h2 is-upgraded>Mitigation Strategies</h2>
+<ol type="1">
+<li>Use caching mechanisms or multiple API keys to handle rate limits effectively.</li>
+<li>Flag insufficient data cases during preprocessing; supplement with synthetic datasets if necessary.</li>
+<li>Conduct regular testing during integration phases to identify bottlenecks early.</li>
+</ol>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="Expected Outcomes and Benefits" duration="0">
+        <h2 is-upgraded>Measurable Goals</h2>
+<ol type="1">
+<li>Achieve &gt;90% accuracy in aspect-based sentiment analysis results.</li>
+<li>Reduce time taken to analyze customer feedback by at least 50%.</li>
+</ol>
+<h2 is-upgraded>Expected Benefits</h2>
+<ol type="1">
+<li>Actionable insights into strengths/weaknesses grouped by restaurant tiers for owners.</li>
+<li>Access to unbiased ratings normalized across platforms for customers.</li>
+<li>Identification of emerging trends in customer preferences for market researchers.</li>
+</ol>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="Conclusion" duration="0">
+        <p>SentimentSift integrates advanced tools like PyABSA, BERTopic, Pinecone, LangChain, OpenAI GPT-4, Snowflake, and Streamlit to bridge the gap between unstructured feedback and actionable insights within the restaurant industry—revolutionizing decision-making while enhancing customer satisfaction through its innovative RAG-powered chatbot functionality!</p>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="Authors" duration="0">
+        <ul>
+<li>Team: Anuj Rajendraprasad Nene, Sicheng Bao, Yung-Rou Ko</li>
+<li>Course: 7245 Big-Data Final Project</li>
+</ul>
+
+
+      </google-codelab-step>
+    
+  </google-codelab>
+
+  <script src="https://storage.googleapis.com/claat-public/native-shim.js"></script>
+  <script src="https://storage.googleapis.com/claat-public/custom-elements.min.js"></script>
+  <script src="https://storage.googleapis.com/claat-public/prettify.js"></script>
+  <script src="https://storage.googleapis.com/claat-public/codelab-elements.js"></script>
+  <script src="//support.google.com/inapp/api.js"></script>
+
+</body>
+</html>

@@ -1,200 +1,80 @@
-# SentimentSift: AI-Powered Review Analysis Platform
+# README.md
 
-codelab: https://koyungrou.github.io/Final_SentimentSift/
+## **SentimentSift**
 
+### **Introduction**
+SentimentSift is a data-driven tool designed to transform unstructured customer feedback into actionable insights for the restaurant industry. By consolidating reviews and ratings from multiple platforms, the tool generates a normalized rating system based on three critical aspects: **Food**, **Service**, and **Ambiance**. 
 
-An intelligent review analysis platform that uses advanced natural
-language processing and sentiment analysis to filter emotional content from Google reviews,
-providing users with more objective, factual, and balanced insights about businesses, products,
-and services.
-
-
-## 🔍 Overview
-
-A restaurant owner saying that those who gave the restaurant one-star negative reviews were all saying it took too long to wait, not that the food was bad. So there is an API that can capture the reviews of this store, and then throw it into AI analysis, there should be different results.
-
-SentimentSift is an intelligent review analysis platform that uses advanced AI techniques to filter emotional bias from Google and other platform reviews. Our system provides users with more objective, factual insights about businesses by differentiating between subjective emotional content and objective assessments. SentimentSift also providing a curated list of reliable food bloggers. For each trusted blogger, the platform displays a comprehensive list of all restaurants they've previously visited and reviewed, creating a reliable recommendation network that users can trust.
-
-By leveraging natural language processing, sentiment analysis, and large language models, SentimentSift transforms how users interact with online reviews, creating a more reliable information ecosystem for decision-making.
-
-
-
-## ✨ Features
-
-- **Objective Review Filtering**: Automatically detects and filters emotional content from reviews
-- **Multi-source Analysis**: Aggregates reviews from Google, Yelp, TripAdvisor, and other platforms
-- **Sentiment Classification**: Analyzes review sentiment with advanced NLP techniques
-- **Business Insights Dashboard**: Visual representations of review trends and sentiment analysis
-- **Fact Extraction**: Identifies factual statements separate from opinions
-- **Credibility Scoring**: Rates reviews based on objectivity and helpfulness
-- **Summary Generation**: Creates concise, objective summaries of multiple reviews
-- **Reliable Food Blogger List**: Identifies trustworthy food bloggers and provides access to all businesses they've reviewed
-
-## 🏗️ System Architecture
-
-SentimentSift uses a modern, scalable architecture:
-
-```
-┌───────────────┐    ┌───────────────┐    ┌───────────────────┐
-│ Data Sources  │───>│ Airflow ETL   │───>│   AWS S3 Storage  │
-└───────────────┘    └───────────────┘    └───────────────────┘
-                                                   │
-┌───────────────┐    ┌───────────────┐             │
-│ Streamlit UI  │<───│ FastAPI       │<────────────┘
-└───────────────┘    └───────────────┘
-                            │
-                     ┌──────┴──────┐
-                     │ LLM Services│
-                     └──────┬──────┘
-                            │
-                     ┌──────┴──────┐
-                     │ Agent System│
-                     └─────────────┘
-```
-
-![Theme](./simplified_sentimentsift_architecture.png)
-
-
-## 📂 Project Structure
-
-```
-sentimentsift/
-├── airflow/                 # Airflow DAGs and plugins
-│   ├── dags/                # ETL pipeline definitions
-│   └── plugins/             # Custom Airflow components
-├── backend/                 # FastAPI application
-│   ├── app/                 # API endpoints and business logic
-│   │   ├── api/             # API route definitions
-│   │   ├── core/            # Core application components
-│   │   ├── models/          # Data models
-│   │   └── services/        # Business logic services
-│   └── tests/               # Backend tests
-├── frontend/                # Streamlit application
-│   ├── pages/               # Multi-page app components
-│   └── components/          # Reusable UI components
-├── agents/                  # Agent system components
-│   ├── langraph/            # LangGraph agent definitions
-│   └── crewai/              # CrewAI agent configurations
-├── data/                    # Data processing scripts
-│   ├── collectors/          # Data collection modules
-│   └── processors/          # Data transformation modules
-├── models/                  # Sentiment analysis models
-├── tests/                   # Integration tests
-├── scripts/                 # Utility scripts
-├── docs/                    # Documentation
-├── docker-compose.yml       # Docker services configuration
-└── README.md                # This file
-```
-
-
-### Setup
-
-1. Clone the repository
-```bash
-git clone https://github.com/DAMG-7245/SentimentSift-AI-Powered-Review-Analysis-Platform.git
-cd sentimentsift
-```
-
-2. Create and activate a virtual environment
-```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-```
-
-3. Install dependencies
-```bash
-pip install -r requirements.txt
-```
-
-4. Set up environment variables
-```bash
-cp .env.example .env
-# Edit .env with your API keys and configuration
-```
-
-5. Start the services using Docker Compose
-```bash
-docker-compose up -d
-```
-
-
-```
-
-## 🚀 Usage
-
-### Running the Airflow Pipeline
-
-```bash
-cd airflow
-airflow standalone
-```
-Access the Airflow UI at http://localhost:8080
-
-### Starting the FastAPI Backend
-
-```bash
-cd backend
-uvicorn app.main:app --reload
-```
-The API will be available at http://localhost:8000
-
-### Launching the Streamlit Frontend
-
-```bash
-cd frontend
-streamlit run app.py
-```
-Access the web interface at http://localhost:8501
-
-## 📚 API Documentation
-
-Once the FastAPI server is running, visit http://localhost:8000/docs for interactive API documentation.
-
-Key endpoints:
-- `GET /reviews/{business_id}`: Get filtered reviews for a business
-- `POST /analyze`: Submit a review for sentiment analysis
-- `GET /summary/{business_id}`: Get an objective summary of all reviews
-- `GET /metrics/{business_id}`: Get key metrics and insights
-- `GET /bloggers/reliable`: Get a list of reliable food bloggers
-- `GET /bloggers/{username}/reviews`: Get all businesses reviewed by a specific reliable blogger
-
-
-## 📊 Data Sources
-
-SentimentSift collects and processes data from multiple sources:
-
-### Structured Data
-- Google Places API: Business details and associated reviews
-- Public review datasets: For model training and validation
-- User feedback: Stored in structured database tables
-
-### Unstructured Data
-- Web scraping: Reviews from Yelp, TripAdvisor, etc.
-- PDF documents: Business reports and research papers
-- Social media: Comments and posts from platforms like Twitter
-
-## 🔄 Airflow Pipelines
-
-Our ETL process is managed through Apache Airflow DAGs:
-
-1. **review_collection_dag**: Schedules API calls and web scraping
-2. **data_processing_dag**: Cleans and transforms the collected data
-3. **sentiment_analysis_dag**: Runs batch sentiment analysis jobs
-4. **reporting_dag**: Generates periodic insights and reports
-5. **blogger_reliability_dag**: Evaluates and updates food blogger reliability scores
-
-## 🤖 Agent System
-
-SentimentSift uses a multi-agent system leveraging various frameworks:
-
-1. **Review Analysis Agent**: Processes individual reviews using LangGraph
-2. **Fact Extraction Agent**: Identifies factual statements within reviews
-3. **Summary Agent**: Generates concise summaries of multiple reviews
-4. **Coordination Agent**: Orchestrates the workflow using CrewAI
-
-MCP server integration enables distributed processing for improved performance.
+Additionally, SentimentSift integrates an advanced chatbot powered by **Retrieval-Augmented Generation (RAG)** and **Large Language Models (LLMs)** to provide precise, context-aware responses to user queries. This project aims to empower restaurant owners, customers, and market researchers with unbiased insights and interactive tools for better decision-making.
 
 ---
+
+## **Overview**
+
+### **Key Features**
+1. **Sentiment Analysis**: Aspect-based sentiment scoring for food, service, and ambiance using PyABSA.
+2. **Theme Extraction**: Identification of recurring themes in reviews with BERTopic.
+3. **Normalized Ratings**: Consolidated scores visualized on a scale of 10/100.
+4. **Interactive UI**: A Streamlit-based interface for querying trends and visualizing insights.
+5. **Chatbot Integration**:
+   - RAG-powered chatbot for advanced restaurant-specific queries.
+   - Context-aware responses using LLMs (e.g., OpenAI GPT-4).
+6. **Actionable Reports**: Tiered summary reports highlighting trends in customer feedback.
+
+---
+
+### **System Architecture**
+
+![Alt Text](WorkFlow.jpg)
+
+```plaintext
+1. Data Ingestion:
+   - Collect structured (restaurant details) and unstructured (reviews) data via APIs (Google, Yelp, Twitter).
+
+2. Data Preprocessing:
+   - Normalize ratings across platforms; clean text; add metadata.
+
+3. Data Storage:
+   - Store raw JSON files in Amazon S3; stage preprocessed data in Snowflake.
+
+4. Sentiment Analysis & Theme Extraction:
+   - Use PyABSA for aspect-based scoring; feed labeled text into BERTopic.
+
+5. Vector Embedding Storage:
+   - Store embeddings with metadata in Pinecone.
+
+6. Chatbot Integration:
+   - Use LangChain & GPT-4 to build a RAG-powered chatbot for advanced queries.
+
+7. Visualization & Querying:
+   - Develop Streamlit UI for querying trends and visualizing insights.
+```
+
+---
+
+### **Data Sources**
+
+#### **Unstructured Data**
+- **Google API**: Reviews and ratings from Google.
+- **Yelp API**: Detailed reviews and metadata about restaurants.
+- **Twitter API**: Social media analytics for real-time mentions.
+
+#### **Structured Data**
+- Restaurant details such as name, location, price range, cuisine type, and operating hours.
+
+---
+
+### **Tools and Technologies**
+1. **PyABSA**: For aspect-based sentiment analysis.
+2. **BERTopic**: For extracting recurring themes from customer reviews.
+3. **Pinecone**: Vector database for storing embeddings with metadata.
+4. **Snowflake**: Cloud-based data warehouse for preprocessing and validation.
+5. **Streamlit**: Framework for building an interactive user interface.
+6. **LangChain & OpenAI GPT-4**: For RAG-powered chatbot integration.
+7. **Amazon S3**: Storage for raw JSON files and processed datasets.
+
+---
+
 
 ## **👨‍💻 Authors**
 * Sicheng Bao (@Jellysillyfish13)
