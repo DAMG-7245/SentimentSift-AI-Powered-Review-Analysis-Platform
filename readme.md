@@ -25,7 +25,7 @@ Additionally, SentimentSift integrates an advanced chatbot powered by **Retrieva
 
 ### **System Architecture**
 
-![Alt Text](Workflow.png)
+![Alt Text](WorkFlow.jpg)
 
 ```plaintext
 1. Data Ingestion:

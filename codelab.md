@@ -43,7 +43,7 @@ The goal is to deliver actionable insights to stakeholders through:
 
 ## **Project Overview**
 
- ![Theme](Workflow.png)
+ ![Theme](WorkFlow.jpg)
 
 ### **Scope**
 
