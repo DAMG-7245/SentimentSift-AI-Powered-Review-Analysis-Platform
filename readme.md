@@ -2,6 +2,8 @@
 
 ## **SentimentSift**
 
+Codelab URL: https://damg-7245.github.io/SentimentSift-AI-Powered-Review-Analysis-Platform/#0
+
 ### **Introduction**
 SentimentSift is a data-driven tool designed to transform unstructured customer feedback into actionable insights for the restaurant industry. By consolidating reviews and ratings from multiple platforms, the tool generates a normalized rating system based on three critical aspects: **Food**, **Service**, and **Ambiance**. 
 
