@@ -1,109 +1,171 @@
-# airflow/tasks/data_process.py
 import json
 import pandas as pd
 import os
 from typing import List, Dict, Any
 
-def load_json_file(file_path: str) -> List[Dict[Any, Any]]:
+def load_json_file(file_path: str) -> Any:
     """
-    Load JSON file into a list of dictionaries
+    Load JSON file into a Python object (dict or list)
     """
-    data = []
     with open(file_path, 'r', encoding='utf-8') as f:
-        for line in f:
-            data.append(json.loads(line))
-    return data
+        return json.load(f)
 
-def process_business_data(data: List[Dict[Any, Any]], category_filter: str = 'Restaurants') -> pd.DataFrame:
+def clean_string(text):
     """
-    Process business data to create a business table
+    Clean string values by replacing escape characters and Unicode characters
     
     Args:
-        data: List of business data dictionaries
-        category_filter: Category to filter businesses
+        text: String to clean
         
     Returns:
-        DataFrame containing filtered business data
+        Cleaned string
     """
-    # Filter for restaurants
-    restaurants = []
-    for business in data:
-        if business.get('categories') and category_filter in business.get('categories'):
-            restaurants.append(business)
+    if not isinstance(text, str):
+        return text
+    
+    # Replace common escape sequences and Unicode characters
+    replacements = {
+        '\\/': '/',
+        '\\u2013': '-',  # Em dash to regular hyphen
+        '\\u2014': '-',  # Em dash to regular hyphen
+        '\\u2018': "'",  # Left single quotation mark
+        '\\u2019': "'",  # Right single quotation mark
+        '\\u201C': '"',  # Left double quotation mark
+        '\\u201D': '"',  # Right double quotation mark
+        '\\u00A0': ' ',  # Non-breaking space
+        '\\u00A9': '(c)',  # Copyright symbol
+        '\\u00AE': '(R)',  # Registered trademark
+        '\\u2026': '...',  # Ellipsis
+    }
+    
+    for old, new in replacements.items():
+        text = text.replace(old, new)
+    
+    # Fix price range formats
+    if '–' in text and ('$1' in text or '$10' in text or '$20' in text or '$30' in text):
+        text = text.replace('–', '-')
+    
+    return text
+
+def process_business_data(data: Dict[Any, Any]) -> pd.DataFrame:
+    """
+    Process business data from Google Maps API response
+    
+    Args:
+        data: Dictionary containing Google Maps API response
+        
+    Returns:
+        DataFrame containing processed business data
+    """
+    # Extract businesses from the 'data' list
+    businesses = data.get('data', [])
     
     # Create DataFrame
-    business_df = pd.DataFrame(restaurants)
+    business_df = pd.DataFrame(businesses)
     
-    # Select relevant columns
+    # Select relevant columns if available
     if not business_df.empty:
-        business_df = business_df[[
-            'business_id', 'name', 'address', 'city', 'state', 
-            'postal_code', 'latitude', 'longitude', 'stars', 
-            'review_count', 'attributes', 'categories'
-        ]]
+        relevant_columns = [
+            'business_id', 'name', 'full_address',
+            'review_count', 'rating', 'phone_number', 'website', 'type',
+            'subtypes', 'price_level', 'latitude', 'longitude'  # 添加了latitude和longitude字段
+        ]
+        
+        # Only include columns that exist
+        existing_columns = [col for col in relevant_columns if col in business_df.columns]
+        business_df = business_df[existing_columns]
     
     return business_df
 
-def process_review_data(data: List[Dict[Any, Any]], business_ids: List[str]) -> Dict[str, pd.DataFrame]:
+def process_review_data(data: Any) -> Dict[str, pd.DataFrame]:
     """
-    Process review data to create review tables for each business
+    Process review data from the reviews JSON file
     
     Args:
-        data: List of review data dictionaries
-        business_ids: List of business IDs to filter reviews
+        data: JSON data containing reviews (can be list of business reviews)
         
     Returns:
         Dictionary of DataFrames containing review data for each business
     """
     # Create a dictionary to store reviews for each business
-    business_reviews = {business_id: [] for business_id in business_ids}
+    business_reviews = {}
     
-    # Filter reviews for selected businesses
-    for review in data:
-        business_id = review.get('business_id')
-        if business_id in business_ids:
-            business_reviews[business_id].append(review)
+    # Handle the structure as seen in all_reviews.json
+    if isinstance(data, list):
+        # This is an array of business review objects
+        for business_review in data:
+            if isinstance(business_review, dict):
+                # Extract business_id from parameters
+                business_id = business_review.get('parameters', {}).get('business_id')
+                
+                if business_id and 'data' in business_review:
+                    # Extract reviews for this business
+                    reviews = business_review.get('data', [])
+                    
+                    # Filter reviews that have text (not null)
+                    text_reviews = [review for review in reviews if review.get('review_text') is not None]
+                    
+                    if text_reviews:
+                        review_df = pd.DataFrame(text_reviews)
+                        
+                        # Select relevant columns if available
+                        relevant_columns = [
+                            'review_id', 'review_text', 'rating', 'review_datetime_utc',
+                            'review_timestamp', 'like_count'
+                        ]
+                        
+                        # Only include columns that exist
+                        existing_columns = [col for col in relevant_columns if col in review_df.columns]
+                        if existing_columns:
+                            review_df = review_df[existing_columns]
+                            business_reviews[business_id] = review_df
+                            print(f"Processed {len(text_reviews)} text reviews for business {business_id}")
     
-    # Create DataFrames for each business
-    review_dfs = {}
-    for business_id, reviews in business_reviews.items():
-        if reviews:
-            review_df = pd.DataFrame(reviews)
-            review_df = review_df[[
-                'review_id', 'user_id', 'business_id', 'stars', 
-                'date', 'text', 'useful', 'funny', 'cool'
-            ]]
-            review_dfs[business_id] = review_df
-    
-    return review_dfs
+    return business_reviews
 
-def select_top_reviewed_businesses(business_df: pd.DataFrame, min_reviews: int = 500, count: int = 5) -> List[str]:
+def combine_all_reviews(review_files_dir: str) -> Dict[str, pd.DataFrame]:
     """
-    Select top reviewed businesses
+    Process all reviews from all_reviews.json file
     
     Args:
-        business_df: DataFrame containing business data
-        min_reviews: Minimum number of reviews required
-        count: Number of businesses to select
+        review_files_dir: Directory containing all_reviews.json file
         
     Returns:
-        List of selected business IDs
+        Dictionary of DataFrames containing review data for each business
     """
-    # Filter businesses with minimum reviews
-    filtered_df = business_df[business_df['review_count'] >= min_reviews]
+    all_reviews = {}
     
-    # Sort by review count in descending order and take top 'count'
-    top_businesses = filtered_df.sort_values('review_count', ascending=False).head(count)
+    # Path to all_reviews.json which contains all reviews for all cafes
+    all_reviews_path = os.path.join(review_files_dir, 'all_reviews.json')
     
-    return top_businesses['business_id'].tolist()
+    if os.path.exists(all_reviews_path):
+        print(f"Found all_reviews.json at {all_reviews_path}")
+        try:
+            data = load_json_file(all_reviews_path)
+            
+            # Process reviews for businesses
+            business_reviews = process_review_data(data)
+            
+            # Add to all_reviews dictionary
+            all_reviews.update(business_reviews)
+            
+            print(f"Extracted reviews for {len(all_reviews)} businesses from all_reviews.json")
+        except Exception as e:
+            print(f"Error processing all_reviews.json: {str(e)}")
+            import traceback
+            traceback.print_exc()
+    else:
+        print(f"Warning: all_reviews.json not found in {review_files_dir}")
+    
+    return all_reviews
 
-def run_data_processing(business_path: str, review_path: str, output_dir: str) -> Dict[str, Any]:
+def run_data_processing(business_path: str, reviews_dir: str, output_dir: str) -> Dict[str, Any]:
     """
     Run the data processing pipeline
     
     Args:
-        business_path: Path to business JSON file
-        review_path: Path to review JSON file
+        business_path: Path to business JSON file (boston_cafes.json)
+        reviews_dir: Directory containing all_reviews.json
         output_dir: Directory to save output files
         
     Returns:
@@ -112,49 +174,79 @@ def run_data_processing(business_path: str, review_path: str, output_dir: str) -
     # Create output directory if it doesn't exist
     os.makedirs(output_dir, exist_ok=True)
     
-    # Load business data
+    # Load and process business data
+    print(f"Loading business data from {business_path}")
     business_data = load_json_file(business_path)
     business_df = process_business_data(business_data)
+    print(f"Processed {len(business_df)} businesses")
     
-    # Save business dataframe
-    business_output_path = os.path.join(output_dir, 'business.csv')
-    business_df.to_csv(business_output_path, index=False)
+    # Save business dataframe as JSON directly without pandas
+    business_output_path = os.path.join(output_dir, 'business.json')
     
-    # Select top 5 restaurants with at least 500 reviews
-    selected_business_ids = select_top_reviewed_businesses(business_df)
+    # Convert DataFrame to list of dictionaries and fix escape characters
+    business_list = []
+    for _, row in business_df.iterrows():
+        business_dict = row.to_dict()
+        # Clean string values
+        for key, value in business_dict.items():
+            if isinstance(value, str):
+                business_dict[key] = clean_string(value)
+        business_list.append(business_dict)
     
-    # Filter business dataframe to only include selected businesses
-    selected_business_df = business_df[business_df['business_id'].isin(selected_business_ids)]
-    selected_business_output_path = os.path.join(output_dir, 'selected_business.csv')
-    selected_business_df.to_csv(selected_business_output_path, index=False)
+    # Write directly to JSON file
+    with open(business_output_path, 'w', encoding='utf-8') as f:
+        json.dump(business_list, f, indent=2, ensure_ascii=False)
     
-    # Load review data
-    review_data = load_json_file(review_path)
+    print(f"Saved business data to {business_output_path}")
     
-    # Process reviews for selected businesses
-    review_dfs = process_review_data(review_data, selected_business_ids)
+    # Process all review files
+    print(f"Processing reviews from {reviews_dir}")
+    review_dfs = combine_all_reviews(reviews_dir)
+    print(f"Found reviews for {len(review_dfs)} businesses")
     
     # Save review dataframes
-    review_paths = {}
+    all_reviews = []
     for business_id, review_df in review_dfs.items():
-        review_output_path = os.path.join(output_dir, f'reviews_{business_id}.csv')
-        review_df.to_csv(review_output_path, index=False)
-        review_paths[business_id] = review_output_path
+        print(f"Processing {len(review_df)} reviews for business {business_id}")
+        
+        # Convert the DataFrame to a list of dictionaries
+        reviews_list = review_df.to_dict(orient='records')
+        
+        # Clean string values and add business_id
+        for review in reviews_list:
+            # Add business_id to each review if not already present
+            if 'business_id' not in review:
+                review['business_id'] = business_id
+                
+            # Clean string values
+            for key, value in review.items():
+                if isinstance(value, str):
+                    review[key] = clean_string(value)
+        
+        all_reviews.extend(reviews_list)
+    
+    # Save all reviews to a single file
+    reviews_output_path = os.path.join(output_dir, 'reviews.json')
+    with open(reviews_output_path, 'w', encoding='utf-8') as f:
+        json.dump(all_reviews, f, indent=2, ensure_ascii=False)
+    
+    print(f"Saved {len(all_reviews)} reviews to {reviews_output_path}")
     
     # Return metadata
     return {
         'business_path': business_output_path,
-        'selected_business_path': selected_business_output_path,
-        'selected_business_ids': selected_business_ids,
-        'review_paths': review_paths
+        'reviews_path': reviews_output_path,
+        'business_count': len(business_df),
+        'review_count': len(all_reviews)
     }
 
 if __name__ == "__main__":
     # Example usage
-    business_path = "data/yelp_dataset/business.json"
-    review_path = "data/yelp_dataset/review.json"
-    output_dir = "data/processed_data"
+    business_path = "boston_cafes_data/boston_cafes.json"
+    reviews_dir = "boston_cafes_data"  # Directory containing all_reviews.json
+    output_dir = "data/processed"
     
-    metadata = run_data_processing(business_path, review_path, output_dir)
+    metadata = run_data_processing(business_path, reviews_dir, output_dir)
     print(f"Processed data saved to {output_dir}")
-    print(f"Selected {len(metadata['selected_business_ids'])} businesses")
+    print(f"Business data saved to {metadata['business_path']}")
+    print(f"Review data saved to {metadata['reviews_path']}")
