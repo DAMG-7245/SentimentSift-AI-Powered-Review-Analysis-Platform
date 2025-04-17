@@ -1,301 +1,230 @@
-# airflow/tasks/data_fetch.py
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 import requests
 import json
-import os
 import time
-from typing import List, Dict, Any
-import pandas as pd
+import os
+from datetime import datetime
+from dotenv import load_dotenv
+load_dotenv()
 
-def fetch_yelp_data(api_key: str, location: str, categories: str, limit: int, output_dir: str) -> Dict[str, str]:
+# API configuration
+API_HOST = "local-business-data.p.rapidapi.com"
+API_KEY = os.getenv("API_KEY")
+HEADERS = {
+    "x-rapidapi-host": API_HOST,
+    "x-rapidapi-key": API_KEY
+}
+
+# Create output directory
+OUTPUT_DIR = "boston_cafes_data"
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+# Create a progress tracking file
+PROGRESS_FILE = os.path.join(OUTPUT_DIR, "progress.json")
+
+def load_progress():
     """
-    Fetch business and review data from Yelp API
-    
-    Args:
-        api_key: Yelp API key
-        location: Location to search for businesses
-        categories: Categories to filter businesses
-        limit: Maximum number of businesses to fetch
-        output_dir: Directory to save output files
-        
-    Returns:
-        Dictionary with paths to output files
+    Load the progress data from file if it exists
     """
-    # Create output directory if it doesn't exist
-    os.makedirs(output_dir, exist_ok=True)
+    if os.path.exists(PROGRESS_FILE):
+        try:
+            with open(PROGRESS_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except json.JSONDecodeError:
+            print("Progress file exists but is invalid. Creating new progress tracking.")
     
-    # Fetch businesses
-    businesses = fetch_businesses(api_key, location, categories, limit)
-    
-    # Save businesses to JSON
-    business_path = os.path.join(output_dir, 'businesses.json')
-    with open(business_path, 'w', encoding='utf-8') as f:
-        for business in businesses:
-            f.write(json.dumps(business) + '\n')
-    
-    # Fetch reviews for each business
-    reviews = []
-    for business in businesses:
-        business_reviews = fetch_reviews(api_key, business['id'])
-        reviews.extend(business_reviews)
-        
-        # Add a delay to avoid rate limiting
-        time.sleep(0.2)
-    
-    # Save reviews to JSON
-    review_path = os.path.join(output_dir, 'reviews.json')
-    with open(review_path, 'w', encoding='utf-8') as f:
-        for review in reviews:
-            f.write(json.dumps(review) + '\n')
-    
+    # Initialize empty progress data
     return {
-        'business_path': business_path,
-        'review_path': review_path
+        "cafes_collected": False,
+        "reviews_collected": [],
+        "last_updated": datetime.now().isoformat()
     }
 
-def fetch_businesses(api_key: str, location: str, categories: str, limit: int) -> List[Dict[Any, Any]]:
+def save_progress(progress):
     """
-    Fetch businesses from Yelp API
-    
-    Args:
-        api_key: Yelp API key
-        location: Location to search for businesses
-        categories: Categories to filter businesses
-        limit: Maximum number of businesses to fetch
-        
-    Returns:
-        List of business data dictionaries
+    Save the progress data to file
     """
-    url = 'https://api.yelp.com/v3/businesses/search'
-    headers = {
-        'Authorization': f'Bearer {api_key}'
-    }
-    
-    businesses = []
-    offset = 0
-    
-    while len(businesses) < limit:
-        params = {
-            'location': location,
-            'categories': categories,
-            'limit': min(50, limit - len(businesses)),
-            'offset': offset,
-            'sort_by': 'review_count',
-            'radius': 40000  # 40km, maximum allowed
-        }
-        
-        response = requests.get(url, headers=headers, params=params)
-        
-        if response.status_code == 200:
-            result = response.json()
-            batch = result.get('businesses', [])
-            
-            if not batch:
-                break
-                
-            businesses.extend(batch)
-            offset += len(batch)
-            
-            # Add a delay to avoid rate limiting
-            time.sleep(0.2)
-        else:
-            print(f"Error fetching businesses: {response.status_code}")
-            print(response.text)
-            break
-    
-    # Format businesses to match JSON structure
-    formatted_businesses = []
-    for business in businesses:
-        formatted_business = {
-            'business_id': business.get('id'),
-            'name': business.get('name'),
-            'address': ' '.join(business.get('location', {}).get('display_address', [])),
-            'city': business.get('location', {}).get('city'),
-            'state': business.get('location', {}).get('state'),
-            'postal_code': business.get('location', {}).get('zip_code'),
-            'latitude': business.get('coordinates', {}).get('latitude'),
-            'longitude': business.get('coordinates', {}).get('longitude'),
-            'stars': business.get('rating'),
-            'review_count': business.get('review_count'),
-            'categories': ','.join([category.get('title') for category in business.get('categories', [])]),
-            'attributes': json.dumps(business.get('attributes', {}))
-        }
-        formatted_businesses.append(formatted_business)
-    
-    return formatted_businesses
+    progress["last_updated"] = datetime.now().isoformat()
+    with open(PROGRESS_FILE, 'w', encoding='utf-8') as f:
+        json.dump(progress, f, ensure_ascii=False, indent=2)
 
-def fetch_reviews(api_key: str, business_id: str, limit: int = 100) -> List[Dict[Any, Any]]:
+def get_boston_cafes(limit=200):
     """
-    Fetch reviews for a business from Yelp API
+    Get cafe data for Boston
+    """
+    print(f"Retrieving data for {limit} cafes in Boston...")
     
-    Args:
-        api_key: Yelp API key
-        business_id: Business ID to fetch reviews for
-        limit: Maximum number of reviews to fetch
-        
-    Returns:
-        List of review data dictionaries
-    """
-    url = f'https://api.yelp.com/v3/businesses/{business_id}/reviews'
-    headers = {
-        'Authorization': f'Bearer {api_key}'
+    # Check if the data already exists
+    filename = os.path.join(OUTPUT_DIR, "boston_cafes.json")
+    if os.path.exists(filename):
+        print(f"Cafe data already exists at {filename}, loading from file...")
+        try:
+            with open(filename, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except json.JSONDecodeError:
+            print("Existing file is invalid. Will fetch new data.")
+    
+    url = "https://local-business-data.p.rapidapi.com/search"
+    params = {
+        "query": "Cafe in Boston,MA",
+        "limit": limit,
+        "lat": 42.3601,  # Corrected latitude for Boston
+        "lng": -71.0589, # Corrected longitude for Boston
+        "zoom": 13,
+        "language": "en",
+        "region": "us",
+        "extract_emails_and_contacts": "false"
     }
     
-    reviews = []
-    offset = 0
-    
-    while len(reviews) < limit:
-        params = {
-            'limit': min(50, limit - len(reviews)),
-            'offset': offset
-        }
+    try:
+        print("Sending request to get cafe data...")
+        response = requests.get(url, headers=HEADERS, params=params)
+        response.raise_for_status()
         
-        response = requests.get(url, headers=headers, params=params)
+        # Add delay after API request
+        print("Waiting for 2 seconds after API request...")
+        time.sleep(2)
         
-        if response.status_code == 200:
-            result = response.json()
-            batch = result.get('reviews', [])
+        # Save the raw JSON response
+        cafes_data = response.json()
+        
+        with open(filename, 'w', encoding='utf-8') as f:
+            json.dump(cafes_data, f, ensure_ascii=False, indent=2)
             
-            if not batch:
-                break
-                
-            reviews.extend(batch)
-            offset += len(batch)
-            
-            # Add a delay to avoid rate limiting
-            time.sleep(0.2)
-        else:
-            print(f"Error fetching reviews: {response.status_code}")
-            print(response.text)
-            break
+        print(f"Cafe data saved to {filename}")
+        return cafes_data
     
-    # Format reviews to match JSON structure
-    formatted_reviews = []
-    for review in reviews:
-        formatted_review = {
-            'review_id': review.get('id'),
-            'user_id': review.get('user', {}).get('id'),
-            'business_id': business_id,
-            'stars': review.get('rating'),
-            'date': review.get('time_created', '').split(' ')[0],
-            'text': review.get('text'),
-            'useful': 0,
-            'funny': 0,
-            'cool': 0
-        }
-        formatted_reviews.append(formatted_review)
-    
-    return formatted_reviews
-
-def fetch_yelp_data_updates(api_key: str, business_ids: List[str], output_dir: str) -> Dict[str, Any]:
-    """
-    Fetch updated review data for selected businesses
-    
-    Args:
-        api_key: Yelp API key
-        business_ids: List of business IDs to fetch updates for
-        output_dir: Directory to save output files
-        
-    Returns:
-        Dictionary with paths to output files and review paths
-    """
-    # Create output directory if it doesn't exist
-    os.makedirs(output_dir, exist_ok=True)
-    
-    # Fetch business details for each business ID
-    businesses = []
-    for business_id in business_ids:
-        business = fetch_business_details(api_key, business_id)
-        if business:
-            businesses.append(business)
-        
-        # Add a delay to avoid rate limiting
-        time.sleep(0.2)
-    
-    # Save businesses to JSON
-    business_path = os.path.join(output_dir, 'businesses_update.json')
-    with open(business_path, 'w', encoding='utf-8') as f:
-        for business in businesses:
-            f.write(json.dumps(business) + '\n')
-    
-    # Save businesses to CSV
-    business_df = pd.DataFrame(businesses)
-    business_csv_path = os.path.join(output_dir, 'businesses_update.csv')
-    business_df.to_csv(business_csv_path, index=False)
-    
-    # Fetch reviews for each business
-    review_paths = {}
-    for business in businesses:
-        business_id = business['business_id']
-        business_reviews = fetch_reviews(api_key, business_id)
-        
-        # Save reviews to JSON
-        review_json_path = os.path.join(output_dir, f'reviews_{business_id}.json')
-        with open(review_json_path, 'w', encoding='utf-8') as f:
-            for review in business_reviews:
-                f.write(json.dumps(review) + '\n')
-        
-        # Save reviews to CSV
-        review_df = pd.DataFrame(business_reviews)
-        review_csv_path = os.path.join(output_dir, f'reviews_{business_id}.csv')
-        review_df.to_csv(review_csv_path, index=False)
-        
-        review_paths[business_id] = review_csv_path
-    
-    return {
-        'business_path': business_csv_path,
-        'review_paths': review_paths
-    }
-
-def fetch_business_details(api_key: str, business_id: str) -> Dict[Any, Any]:
-    """
-    Fetch details for a business from Yelp API
-    
-    Args:
-        api_key: Yelp API key
-        business_id: Business ID to fetch details for
-        
-    Returns:
-        Dictionary with business details
-    """
-    url = f'https://api.yelp.com/v3/businesses/{business_id}'
-    headers = {
-        'Authorization': f'Bearer {api_key}'
-    }
-    
-    response = requests.get(url, headers=headers)
-    
-    if response.status_code == 200:
-        business = response.json()
-        
-        # Format business to match JSON structure
-        formatted_business = {
-            'business_id': business.get('id'),
-            'name': business.get('name'),
-            'address': ' '.join(business.get('location', {}).get('display_address', [])),
-            'city': business.get('location', {}).get('city'),
-            'state': business.get('location', {}).get('state'),
-            'postal_code': business.get('location', {}).get('zip_code'),
-            'latitude': business.get('coordinates', {}).get('latitude'),
-            'longitude': business.get('coordinates', {}).get('longitude'),
-            'stars': business.get('rating'),
-            'review_count': business.get('review_count'),
-            'categories': ','.join([category.get('title') for category in business.get('categories', [])]),
-            'attributes': json.dumps(business.get('attributes', {}))
-        }
-        
-        return formatted_business
-    else:
-        print(f"Error fetching business details: {response.status_code}")
-        print(response.text)
+    except requests.exceptions.RequestException as e:
+        print(f"Error retrieving cafe data: {e}")
         return None
 
-if __name__ == "__main__":
-    # Example usage
-    api_key = "YOUR_YELP_API_KEY"
-    location = "Boston, MA"
-    categories = "restaurants"
-    limit = 10
-    output_dir = "raw_data"
+def get_cafe_reviews(business_id, limit=100):
+    """
+    Get reviews for a specific cafe
+    """
+    print(f"Retrieving reviews for cafe {business_id}...")
     
-    result = fetch_yelp_data(api_key, location, categories, limit, output_dir)
-    print(f"Data saved to {result['business_path']} and {result['review_path']}")
+    # Check if the reviews already exist
+    filename = os.path.join(OUTPUT_DIR, f"reviews_{business_id.replace(':', '_')}.json")
+    if os.path.exists(filename):
+        print(f"Review data already exists at {filename}, loading from file...")
+        try:
+            with open(filename, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except json.JSONDecodeError:
+            print("Existing review file is invalid. Will fetch new data.")
+    
+    url = "https://local-business-data.p.rapidapi.com/business-reviews"
+    params = {
+        "business_id": business_id,
+        "limit": limit,
+        "sort_by": "newest",
+        "region": "us",
+        "language": "en"
+    }
+    
+    try:
+        print("Sending request to get review data...")
+        response = requests.get(url, headers=HEADERS, params=params)
+        response.raise_for_status()
+        
+        # Add delay after API request
+        print("Waiting for 2 seconds after API request...")
+        time.sleep(2)
+        
+        # Save the raw JSON response
+        reviews_data = response.json()
+        
+        with open(filename, 'w', encoding='utf-8') as f:
+            json.dump(reviews_data, f, ensure_ascii=False, indent=2)
+            
+        print(f"Review data saved to {filename}")
+        return reviews_data
+        
+    except requests.exceptions.RequestException as e:
+        print(f"Error retrieving reviews: {e}")
+        return None
+
+def main():
+    """
+    Main function to orchestrate the data collection process
+    """
+    # Load progress data
+    progress = load_progress()
+    print(f"Loaded progress data: {progress}")
+    
+    # Step 1: Get cafes in Boston if not already collected
+    cafes_data = None
+    if not progress["cafes_collected"]:
+        cafes_data = get_boston_cafes(limit=200)
+        if cafes_data and "data" in cafes_data:
+            progress["cafes_collected"] = True
+            save_progress(progress)
+    else:
+        # Load existing cafe data
+        filename = os.path.join(OUTPUT_DIR, "boston_cafes.json")
+        if os.path.exists(filename):
+            with open(filename, 'r', encoding='utf-8') as f:
+                cafes_data = json.load(f)
+            print("Loaded existing cafe data")
+    
+    if not cafes_data or "data" not in cafes_data:
+        print("Failed to get cafe data or invalid response format")
+        return
+    
+    # Step 2: Get reviews for each cafe
+    cafes = cafes_data.get("data", [])
+    print(f"Found {len(cafes)} cafes. Starting to collect reviews...")
+    
+    # Prepare all reviews data
+    all_reviews = []
+    
+    for i, cafe in enumerate(cafes):
+        business_id = cafe.get("business_id")
+        name = cafe.get("name", "Unknown")
+        
+        if not business_id:
+            print(f"Skipping cafe {name} - missing business_id")
+            continue
+        
+        # Check if we already collected reviews for this cafe
+        if business_id in progress["reviews_collected"]:
+            print(f"\n[{i+1}/{len(cafes)}] Already processed: {name}")
+            
+            # Load the existing reviews
+            filename = os.path.join(OUTPUT_DIR, f"reviews_{business_id.replace(':', '_')}.json")
+            if os.path.exists(filename):
+                with open(filename, 'r', encoding='utf-8') as f:
+                    reviews_data = json.load(f)
+                    all_reviews.append(reviews_data)
+            continue
+        
+        print(f"\n[{i+1}/{len(cafes)}] Processing: {name}")
+        
+        # Get review data
+        reviews_data = get_cafe_reviews(business_id, limit=100)
+        
+        if reviews_data:
+            # Add to the collection of all reviews
+            all_reviews.append(reviews_data)
+            
+            # Update progress
+            progress["reviews_collected"].append(business_id)
+            save_progress(progress)
+        
+        # Add delay to avoid exceeding API rate limits
+        print("Waiting for 2 seconds before the next request...")
+        time.sleep(2)
+    
+    # Save the merged file of all reviews
+    with open(os.path.join(OUTPUT_DIR, "all_reviews.json"), 'w', encoding='utf-8') as f:
+        json.dump(all_reviews, f, ensure_ascii=False, indent=2)
+    
+    print("\nData collection complete!")
+    print(f"Collected data for {len(cafes)} cafes")
+    print(f"Processed reviews for {len(progress['reviews_collected'])} cafes")
+    print(f"All data saved to {os.path.abspath(OUTPUT_DIR)}")
+
+if __name__ == "__main__":
+    main()

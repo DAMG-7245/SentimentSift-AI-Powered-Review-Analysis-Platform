@@ -324,3 +324,5 @@ backend/pdf_storage/
 secrets/
 backend/cost_logs/
 data/
+boston_cafes_data/
+

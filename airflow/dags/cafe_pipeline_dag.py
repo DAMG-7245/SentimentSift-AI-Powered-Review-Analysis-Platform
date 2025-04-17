@@ -1,4 +1,4 @@
-# airflow/dags/yelp_pipeline_dag.py
+# airflow/dags/cafe_pipeline_dag.py
 from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.operators.python import PythonOperator
@@ -8,10 +8,11 @@ import sys
 # Add parent directory to path for imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from tasks.data_fetch import fetch_yelp_data
+
+from tasks.data_fetch import get_boston_cafes, get_cafe_reviews
 from tasks.data_process import run_data_processing
 from tasks.sentiment_analysis import run_sentiment_analysis
-from tasks.trend_analysis import run_topic_modeling
+from tasks.theme_analysis import run_topic_modeling
 from tasks.snowflake_sync import run_snowflake_sync
 
 default_args = {
@@ -24,22 +25,64 @@ default_args = {
     'retry_delay': timedelta(minutes=5)
 }
 
+
+def fetch_cafe_data(api_key, location, categories, limit, output_dir):
+    """
+    获取咖啡店数据并返回格式化的结果
+    """
+    os.makedirs(output_dir, exist_ok=True)
+    
+
+    cafes_data = get_boston_cafes(limit=limit)
+    
+    if not cafes_data or "data" not in cafes_data:
+        raise Exception("Failed to get cafe data")
+    
+
+    business_path = os.path.join(output_dir, "businesses.json")
+    with open(business_path, 'w', encoding='utf-8') as f:
+        import json
+        json.dump(cafes_data, f, ensure_ascii=False, indent=2)
+    
+    review_paths = []
+    cafes = cafes_data.get("data", [])
+  
+    for i, cafe in enumerate(cafes[:limit]):
+        business_id = cafe.get("business_id")
+        if not business_id:
+            continue
+        
+        reviews_data = get_cafe_reviews(business_id, limit=100)
+        
+        if reviews_data:
+            review_path = os.path.join(output_dir, f"reviews_{business_id.replace(':', '_')}.json")
+            review_paths.append(review_path)
+    
+
+    all_reviews_path = os.path.join(output_dir, "reviews.json")
+    
+    
+    return {
+        'business_path': business_path,
+        'reviews_path': all_reviews_path
+    }
+
 with DAG(
-    'yelp_sentiment_pipeline',
+    'cafe_sentiment_pipeline',
     default_args=default_args,
-    description='Yelp sentiment analysis pipeline',
+    description='Cafe sentiment analysis pipeline',
     schedule_interval=timedelta(days=7),
     catchup=False
 ) as dag:
     
-    # Task 1: Fetch data from Yelp API
+    # Task 1: Fetch data from API
     fetch_data_task = PythonOperator(
-        task_id='fetch_yelp_data',
-        python_callable=fetch_yelp_data,
+        task_id='fetch_cafe_data',
+        python_callable=fetch_cafe_data,
         op_kwargs={
-            'api_key': '{{ var.value.yelp_api_key }}',
+            'api_key': '{{ var.value.api_key }}',
             'location': 'Boston, MA',
-            'categories': 'restaurants',
+            'categories': 'cafes',
             'limit': 50,
             'output_dir': '/opt/airflow/data/raw'
         }

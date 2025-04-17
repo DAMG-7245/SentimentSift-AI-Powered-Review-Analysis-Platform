@@ -8,7 +8,7 @@ import sys
 # Add parent directory to path for imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from tasks.data_fetch import fetch_yelp_data_updates
+from tasks.data_fetch import get_boston_cafes, get_cafe_reviews
 from tasks.sentiment_analysis import run_sentiment_analysis
 from tasks.snowflake_sync import run_snowflake_sync
 
@@ -22,20 +22,45 @@ default_args = {
     'retry_delay': timedelta(minutes=5)
 }
 
+
+def fetch_cafe_data_updates(api_key, business_ids, output_dir):
+    
+    os.makedirs(output_dir, exist_ok=True)
+    
+    review_paths = []
+    
+    
+    if isinstance(business_ids, str):
+        business_ids = business_ids.split(',')
+    
+    for business_id in business_ids:
+        business_id = business_id.strip()
+        reviews_data = get_cafe_reviews(business_id, limit=100)
+        
+        if reviews_data:
+            review_path = os.path.join(output_dir, f"reviews_{business_id.replace(':', '_')}.json")
+            review_paths.append(review_path)
+    
+    
+    return {
+        'review_paths': review_paths,
+        'business_path': None 
+    }
+
 with DAG(
-    'yelp_data_update',
+    'cafe_data_update',
     default_args=default_args,
-    description='Update Yelp data and sentiment scores',
+    description='Update cafe data and sentiment scores',
     schedule_interval=timedelta(days=1),
     catchup=False
 ) as dag:
     
-    # Task 1: Fetch updates from Yelp API
+    # Task 1: Fetch updates from API
     fetch_updates_task = PythonOperator(
-        task_id='fetch_yelp_updates',
-        python_callable=fetch_yelp_data_updates,
+        task_id='fetch_cafe_updates',
+        python_callable=fetch_cafe_data_updates,
         op_kwargs={
-            'api_key': '{{ var.value.yelp_api_key }}',
+            'api_key': '{{ var.value.api_key }}',
             'business_ids': "{{ var.value.selected_business_ids }}",
             'output_dir': '/opt/airflow/data/updates'
         }
@@ -46,7 +71,7 @@ with DAG(
         task_id='update_sentiment',
         python_callable=run_sentiment_analysis,
         op_kwargs={
-            'review_paths': "{{ ti.xcom_pull(task_ids='fetch_yelp_updates')['review_paths'] }}",
+            'review_paths': "{{ ti.xcom_pull(task_ids='fetch_cafe_updates')['review_paths'] }}",
             'output_dir': '/opt/airflow/data/sentiment_updates'
         }
     )
@@ -57,8 +82,8 @@ with DAG(
         python_callable=run_snowflake_sync,
         op_kwargs={
             'config_path': '/opt/airflow/config/snowflake.json',
-            'business_path': "{{ ti.xcom_pull(task_ids='fetch_yelp_updates')['business_path'] }}",
-            'review_paths': "{{ ti.xcom_pull(task_ids='fetch_yelp_updates')['review_paths'] }}",
+            'business_path': "{{ ti.xcom_pull(task_ids='fetch_cafe_updates')['business_path'] }}",
+            'review_paths': "{{ ti.xcom_pull(task_ids='fetch_cafe_updates')['review_paths'] }}",
             'sentiment_path': "{{ ti.xcom_pull(task_ids='update_sentiment')['sentiment_path'] }}",
         }
     )
