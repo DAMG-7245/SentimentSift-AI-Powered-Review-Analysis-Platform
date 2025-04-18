@@ -324,7 +324,7 @@ if __name__ == "__main__":
     
     # Get project root directory
     current_dir = Path(__file__).parent
-    project_dir = current_dir.parent.parent
+    project_dir = current_dir.parent
     
     # Define data directories
     processed_dir = project_dir / "data" / "processed"
