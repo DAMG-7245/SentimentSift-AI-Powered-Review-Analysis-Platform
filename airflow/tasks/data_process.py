@@ -2,6 +2,14 @@ import json
 import pandas as pd
 import os
 from typing import List, Dict, Any
+from pathlib import Path
+
+# project root, e.g. /opt/airflow
+BASE_DIR = Path(__file__).resolve().parents[1]
+
+BUSINESS_PATH = BASE_DIR / "boston_cafes_data" / "boston_cafes.json"
+REVIEWS_DIR   = BASE_DIR / "boston_cafes_data"
+OUTPUT_DIR    = BASE_DIR / "data" / "processed"
 
 def load_json_file(file_path: str) -> Any:
     """
@@ -241,12 +249,9 @@ def run_data_processing(business_path: str, reviews_dir: str, output_dir: str) -
     }
 
 if __name__ == "__main__":
-    # Example usage
-    business_path = "boston_cafes_data/boston_cafes.json"
-    reviews_dir = "boston_cafes_data"  # Directory containing all_reviews.json
-    output_dir = "data/processed"
-    
-    metadata = run_data_processing(business_path, reviews_dir, output_dir)
-    print(f"Processed data saved to {output_dir}")
-    print(f"Business data saved to {metadata['business_path']}")
-    print(f"Review data saved to {metadata['reviews_path']}")
+    metadata = run_data_processing(
+        str(BUSINESS_PATH),
+        str(REVIEWS_DIR),
+        str(OUTPUT_DIR)
+    )
+    print(f"Processed data saved to {OUTPUT_DIR}")

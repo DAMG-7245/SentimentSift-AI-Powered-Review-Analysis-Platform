@@ -13,7 +13,7 @@ import os
 import math
 import json
 import sys
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 
 import numpy as np
 import torch
@@ -57,6 +57,16 @@ def z_tier3(scores: List[float], thr: float = 0.7, eps: float = 1e-8) -> List[st
     return np.where(z >=  thr, "Tier‑1",
            np.where(z <= -thr, "Tier‑3", "Tier‑2")).tolist()
 
+# ------------------------ Sentiment classifier ------------------------ #
+def classify_sentiment(score: float) -> str:
+    """将0-1之间的情感分数分类为good、neutral或bad"""
+    if score >= 0.67:
+        return "good"
+    elif score <= 0.33:
+        return "bad"
+    else:
+        return "neutral"
+
 # ------------------------ Sentiment analyzer ------------------------ #
 class TextOnlySentimentAnalyzer:
     def __init__(self,
@@ -96,20 +106,36 @@ class TextOnlySentimentAnalyzer:
         return float(probs[1])  # positive prob 0‑1
 
     def aspect_score(self, review_text: str, aspect: str,
-                     like_cnt: int = 0) -> Optional[float]:
+                     like_cnt: int = 0) -> Tuple[Optional[float], Optional[str]]:
         aspect_sents = self.extract_aspect_sentences(review_text, aspect)
         if not aspect_sents:
-            return None
+            return None, None
         scores, weights = [], []
+        sent_classes = []
         for s in aspect_sents:
             s_score = self.analyze_sentiment(s)
+            # 分类每个句子
+            sent_class = classify_sentiment(s_score)
+            sent_classes.append(sent_class)
+            
             conf = abs(s_score - 0.5) * 2.0
             w = like_weight(like_cnt) * (0.5 + conf)
             scores.append(s_score); weights.append(w)
+        
         if not weights or sum(weights) == 0:
-            return None
+            return None, None
+            
         weighted = sum(s * w for s, w in zip(scores, weights)) / sum(weights)
-        return weighted * 10.0
+        
+        # 计算每种分类的比例
+        sentiment_counts = {
+            "good": sent_classes.count("good"),
+            "neutral": sent_classes.count("neutral"),
+            "bad": sent_classes.count("bad")
+        }
+        
+        # 返回加权分数和情感分类比例
+        return weighted * 10.0, sentiment_counts
 
 # ------------------------ Pipeline ------------------------ #
 def run_pipeline(reviews_path: str, output_dir: str, thr: float = 0.7) -> None:
@@ -130,6 +156,12 @@ def run_pipeline(reviews_path: str, output_dir: str, thr: float = 0.7) -> None:
 
     dims = ["service", "food", "ambiance"]
     biz_raw = {bid: {d: [] for d in dims} for bid in biz_reviews}
+    # 为每个维度存储情感分类计数
+    biz_sentiment_counts = {bid: {
+        d: {"good": 0, "neutral": 0, "bad": 0} for d in dims
+    } for bid in biz_reviews}
+    # 为每个维度记录存在评论的总数
+    biz_aspect_counts = {bid: {d: 0 for d in dims} for bid in biz_reviews}
 
     print(f"Analyzing {len(biz_reviews)} businesses …")
     for bid, revs in tqdm(biz_reviews.items()):
@@ -137,13 +169,42 @@ def run_pipeline(reviews_path: str, output_dir: str, thr: float = 0.7) -> None:
             text = rev.get("review_text", "")
             likes = int(rev.get("likes", 0) or 0)
             for d in dims:
-                score = analyzer.aspect_score(text, d, likes)
-                if score is not None:
-                    biz_raw[bid][d].append(score)
+                score_and_counts = analyzer.aspect_score(text, d, likes)
+                if score_and_counts[0] is not None:
+                    biz_raw[bid][d].append(score_and_counts[0])
+                    
+                    # 更新情感分类计数
+                    if score_and_counts[1] is not None:
+                        # 我们不增加biz_aspect_counts[bid][d]，因为我们现在计算的是句子级别的情感
+                        # 而不是评论级别的情感
+                        for cls in ["good", "neutral", "bad"]:
+                            biz_sentiment_counts[bid][d][cls] += score_and_counts[1][cls]
 
+    # 计算每个维度的平均分数
     biz_avg = {bid: {d: (np.mean(v) if v else 5.0)
                      for d, v in dim_dict.items()}
                for bid, dim_dict in biz_raw.items()}
+
+    # 计算每个维度的情感比例
+    biz_sentiment_percentages = {}
+    for bid in biz_reviews:
+        biz_sentiment_percentages[bid] = {}
+        for d in dims:
+            # 计算该维度的总句子数
+            total_sents = sum(biz_sentiment_counts[bid][d].values())
+            if total_sents > 0:
+                for cls in ["good", "neutral", "bad"]:
+                    key = f"{d}_{cls}_pct"
+                    count = biz_sentiment_counts[bid][d][cls]
+                    # 确保百分比相加为1.0
+                    biz_sentiment_percentages[bid][key] = round(count / total_sents, 4)
+            else:
+                # 如果没有该维度的评论，则设置为默认值
+                for cls in ["good", "neutral", "bad"]:
+                    key = f"{d}_{cls}_pct"
+                    biz_sentiment_percentages[bid][key] = 0.0
+                # 如果没有评论，将neutral设为1.0（默认值）
+                biz_sentiment_percentages[bid][f"{d}_neutral_pct"] = 1.0
 
     values = {d: [biz_avg[bid][d] for bid in biz_reviews] for d in dims}
     scaled = {d: logistic_z_scale(vals) for d, vals in values.items()}
@@ -155,13 +216,22 @@ def run_pipeline(reviews_path: str, output_dir: str, thr: float = 0.7) -> None:
     results = []
     for bid in ids:
         i = idx_map[bid]
-        item = {"business_id": bid, "scores": {}}
+        item = {"business_id": bid, "scores": {}, "sentiment_percentages": {}}
+        
+        # 添加分数和层级
         for d in dims:
             sc = round(float(scaled[d][i]), 2)
             tr = tiers[d][i]
             item["scores"][d] = sc
             item["scores"][f"{d}_tier"] = tr
             tier_stats[d][tr] += 1
+        
+        # 添加情感百分比
+        for d in dims:
+            for cls in ["good", "neutral", "bad"]:
+                key = f"{d}_{cls}_pct"
+                item["sentiment_percentages"][key] = biz_sentiment_percentages[bid][key]
+        
         results.append(item)
 
     out_file = os.path.join(output_dir, "cafe_sentiment_with_tiers.json")

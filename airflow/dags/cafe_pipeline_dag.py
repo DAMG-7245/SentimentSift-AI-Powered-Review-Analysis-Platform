@@ -1,137 +1,112 @@
-# airflow/dags/cafe_pipeline_dag.py
-from datetime import datetime, timedelta
 from airflow import DAG
-from airflow.operators.python import PythonOperator
-import os
-import sys
+from airflow.operators.python import ShortCircuitOperator, PythonOperator
+from airflow.operators.bash import BashOperator
+from datetime import datetime, timedelta
+from pathlib import Path
+import json
 
-# Add parent directory to path for imports
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# --- Constants ---------------------------------------------------------------
+BASE_DIR   = "/opt/airflow"                    # container project root
+DATA_DIR   = f"{BASE_DIR}/boston_cafes_data"   # mounted raw data
+PROCESSED  = f"{BASE_DIR}/data/processed"      # processed output
+TASKS_DIR  = f"{BASE_DIR}/tasks"               # all your python scripts
 
-
-from tasks.data_fetch import get_boston_cafes, get_cafe_reviews
-from tasks.data_process import run_data_processing
-from tasks.sentiment_analysis import run_sentiment_analysis
-from tasks.theme_analysis import run_topic_modeling
-from tasks.snowflake_sync import run_snowflake_sync
-
-default_args = {
-    'owner': 'airflow',
-    'depends_on_past': False,
-    'start_date': datetime(2025, 1, 1),
-    'email_on_failure': False,
-    'email_on_retry': False,
-    'retries': 1,
-    'retry_delay': timedelta(minutes=5)
+DEFAULT_ARGS = {
+    "owner": "airflow",
+    "retries": 1,
+    "retry_delay": timedelta(minutes=5),
+    "email_on_failure": False,
 }
 
+# --- Helper functions --------------------------------------------------------
+# need_update 函数（放在 DAG 文件里）
+def need_update(**context) -> bool:
+    cafes_file   = Path(DATA_DIR) / "boston_cafes.json"
+    reviews_file = Path(DATA_DIR) / "all_reviews.json"
 
-def fetch_cafe_data(api_key, location, categories, limit, output_dir):
-    """
-    获取咖啡店数据并返回格式化的结果
-    """
-    os.makedirs(output_dir, exist_ok=True)
-    
+    if not cafes_file.exists() or not reviews_file.exists():
+        return True
 
-    cafes_data = get_boston_cafes(limit=limit)
-    
-    if not cafes_data or "data" not in cafes_data:
-        raise Exception("Failed to get cafe data")
-    
+    last_exec_ts = context["ti"].xcom_pull(
+        key="last_execution_time",
+        task_ids="record_execution_time",     # 上一轮记录的时间戳
+    )
+    if not last_exec_ts:
+        return True   # 第一次运行
 
-    business_path = os.path.join(output_dir, "businesses.json")
-    with open(business_path, 'w', encoding='utf-8') as f:
-        import json
-        json.dump(cafes_data, f, ensure_ascii=False, indent=2)
-    
-    review_paths = []
-    cafes = cafes_data.get("data", [])
-  
-    for i, cafe in enumerate(cafes[:limit]):
-        business_id = cafe.get("business_id")
-        if not business_id:
-            continue
-        
-        reviews_data = get_cafe_reviews(business_id, limit=100)
-        
-        if reviews_data:
-            review_path = os.path.join(output_dir, f"reviews_{business_id.replace(':', '_')}.json")
-            review_paths.append(review_path)
-    
+    last_mtime = max(cafes_file.stat().st_mtime, reviews_file.stat().st_mtime)
 
-    all_reviews_path = os.path.join(output_dir, "reviews.json")
-    
-    
-    return {
-        'business_path': business_path,
-        'reviews_path': all_reviews_path
-    }
+    # 如果文件修改时间小于或等于上次成功处理时间 → 不更新
+    return last_mtime > last_exec_ts
 
+
+def record_execution_time(**context):
+    """Cache current timestamp for potential future use."""
+    ts = int(datetime.now().timestamp())
+    context["ti"].xcom_push(key="last_execution_time", value=ts)
+
+# --- DAG ---------------------------------------------------------------------
 with DAG(
-    'cafe_sentiment_pipeline',
-    default_args=default_args,
-    description='Cafe sentiment analysis pipeline',
-    schedule_interval=timedelta(days=7),
-    catchup=False
+    dag_id="boston_cafes_workflow",
+    description="Boston cafe ETL + sentiment/theme analysis + Snowflake sync",
+    start_date=datetime(2025, 4, 1),
+    schedule_interval="@daily",
+    catchup=False,
+    default_args=DEFAULT_ARGS,
 ) as dag:
-    
-    # Task 1: Fetch data from API
-    fetch_data_task = PythonOperator(
-        task_id='fetch_cafe_data',
-        python_callable=fetch_cafe_data,
-        op_kwargs={
-            'api_key': '{{ var.value.api_key }}',
-            'location': 'Boston, MA',
-            'categories': 'cafes',
-            'limit': 50,
-            'output_dir': '/opt/airflow/data/raw'
-        }
+
+    # 0. decide whether to proceed
+    check_need_update = ShortCircuitOperator(
+        task_id="check_need_update",
+        python_callable=need_update,
     )
-    
-    # Task 2: Process data
-    process_data_task = PythonOperator(
-        task_id='process_data',
-        python_callable=run_data_processing,
-        op_kwargs={
-            'business_path': '/opt/airflow/data/raw/businesses.json',
-            'review_path': '/opt/airflow/data/raw/reviews.json',
-            'output_dir': '/opt/airflow/data/processed'
-        }
+
+    # 1. optional: fetch fresh data (only when check_need_update == True)
+    data_fetch = BashOperator(
+        task_id="data_fetch",
+        bash_command=f"python {TASKS_DIR}/data_fetch.py",
     )
-    
-    # Task 3: Run sentiment analysis
-    sentiment_analysis_task = PythonOperator(
-        task_id='sentiment_analysis',
-        python_callable=run_sentiment_analysis,
-        op_kwargs={
-            'review_paths': "{{ ti.xcom_pull(task_ids='process_data')['review_paths'] }}",
-            'output_dir': '/opt/airflow/data/sentiment'
-        }
+
+    # 2. record timestamp after fetch
+    record_time = PythonOperator(
+        task_id="record_execution_time",
+        python_callable=record_execution_time,
     )
-    
-    # Task 4: Run trend analysis
-    trend_analysis_task = PythonOperator(
-        task_id='trend_analysis',
-        python_callable=run_topic_modeling,
-        op_kwargs={
-            'review_paths': "{{ ti.xcom_pull(task_ids='process_data')['review_paths'] }}",
-            'output_dir': '/opt/airflow/data/trends'
-        }
+
+    # 3. process raw data to structured form
+    data_process = BashOperator(
+        task_id="data_process",
+        bash_command=f"""
+python {TASKS_DIR}/data_process.py \
+  --business_json {DATA_DIR}/boston_cafes.json \
+  --reviews_dir   {DATA_DIR} \
+  --output_dir    {PROCESSED}
+""",
     )
-    
-    # Task 5: Sync data to Snowflake
-    snowflake_sync_task = PythonOperator(
-        task_id='snowflake_sync',
-        python_callable=run_snowflake_sync,
-        op_kwargs={
-            'config_path': '/opt/airflow/config/snowflake.json',
-            'business_path': "{{ ti.xcom_pull(task_ids='process_data')['selected_business_path'] }}",
-            'review_paths': "{{ ti.xcom_pull(task_ids='process_data')['review_paths'] }}",
-            'sentiment_path': "{{ ti.xcom_pull(task_ids='sentiment_analysis')['sentiment_path'] }}",
-            'trend_summary_path': "{{ ti.xcom_pull(task_ids='trend_analysis')['trend_summary_path'] }}"
-        }
+
+    # 4. sentiment analysis
+    sentiment_analysis = BashOperator(
+        task_id="sentiment_analysis",
+        bash_command=f"python {TASKS_DIR}/sentiment_analysis.py",
     )
-    
-    # Define task dependencies
-    fetch_data_task >> process_data_task >> sentiment_analysis_task >> snowflake_sync_task
-    process_data_task >> trend_analysis_task >> snowflake_sync_task
+
+    # 5. theme/topic analysis
+    theme_analysis = BashOperator(
+        task_id="theme_analysis",
+        bash_command=f"python {TASKS_DIR}/theme_analysis.py",
+    )
+
+    # 6. merge results
+    merge = BashOperator(
+        task_id="merge",
+        bash_command=f"python {TASKS_DIR}/merge.py",
+    )
+
+    # 7. sync to Snowflake
+    snowflake_sync = BashOperator(
+        task_id="snowflake_sync",
+        bash_command=f"python {TASKS_DIR}/snowflake_sync.py",
+    )
+
+    # --- Dependencies --------------------------------------------------------
+    check_need_update >> data_fetch >> data_process >> sentiment_analysis >> theme_analysis >> merge >> snowflake_sync >> record_time
