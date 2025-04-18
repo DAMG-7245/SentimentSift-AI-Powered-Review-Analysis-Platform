@@ -1,214 +1,176 @@
-summary: Build SentimentSift to filter emotional bias from online reviews and provide objective insights.
+---
 id: docs
+summary: Build SentimentSift to filter emotional bias from online reviews and provide objective insights.
 categories: AI, NLP, DataEngineering
-tags: sentiment-analysis, airflow, streamlit, fastapi , LLM, RAG
+tags: sentiment-analysis, airflow, streamlit, fastapi, LLM, RAG
 authors: Group 1
 
+---
 
 # SentimentSift: AI-Powered Review Analysis Platform
 
-> **Codelab Proposal**  
-> *Filtering Noise, Amplifying Truth.*
-
+*Filtering Noise, Amplifying Truth.*
 
 ---
 
 ## Overview
 
-**SentimentSift** is an AI-powered platform designed to filter emotional biases from online reviews and provide objective, fact-based insights for consumers and businesses. SentimentSift also providing a curated list of reliable food bloggers. For each trusted blogger, the platform displays a comprehensive list of all restaurants they've previously visited and reviewed, creating a reliable recommendation network that users can trust.
+**SentimentSift** is an AI-powered platform designed to filter emotional biases from online reviews and provide objective, fact-based insights for consumers and businesses. The platform also curates a network of reliable food bloggers, displaying all restaurants they've reviewed for trustworthy recommendations.
 
-A restaurant owner saying that those who gave the restaurant one-star negative reviews were all saying it took too long to wait, not that the food was bad. So there is an API that can capture the reviews of this store, and then throw it into AI analysis, there should be different results.
+> ![Theme](./img/review.jpg)
+> ![Theme](./img/sentimentsift.png)
 
-![Theme](./img/review.jpg)
-![Theme](./img/sentimentsift.png)
+---
+
+## Introduction
+
+### Background
+
+In the competitive restaurant industry, customer reviews and social media feedback shape perceptions and influence dining decisions. However, the lack of a unified system to normalize ratings and extract actionable insights from unstructured data creates challenges for restaurant owners, customers, and market researchers. Reviews often reflect biases and lack consolidated evaluations of key aspects such as food, service, and ambiance.
+
+### Objective
+
+Deliver actionable insights to stakeholders through:
+- **Restaurant Owners:** Brief reports summarizing trends in high-performing restaurants.
+- **Customers:** Consolidated, unbiased ratings for informed dining decisions.
 
 
 ---
 
-## **Introduction**
+## Project Overview
 
-### **Background**
-In the competitive restaurant industry, customer reviews and social media feedback play a crucial role in shaping perceptions and influencing dining decisions. However, the absence of a unified system to normalize ratings across platforms and extract actionable insights from unstructured data creates challenges for restaurant owners, customers, and market researchers. Reviews often reflect biases and lack a consolidated evaluation of key aspects such as food, service, and ambiance.
+![Architecture](WorkFlow.jpg)
 
-This project aims to address these challenges by developing a tool that consolidates customer feedback from multiple platforms, performs sentiment analysis on reviews, and generates a normalized rating system based on three critical aspects: **Food**, **Service**, and **Ambiance**. Additionally, the project integrates an interactive chatbot powered by **Retrieval-Augmented Generation (RAG)** and **Large Language Models (LLMs)** to provide precise, context-aware responses to user queries.
+### Project Architecture
 
-### **Objective**
-The goal is to deliver actionable insights to stakeholders through:
-- **Restaurant Owners**: Brief reports summarizing trends observed in high-performing restaurants.
-- **Customers**: Consolidated, unbiased ratings for informed dining decisions.
-- **Market Researchers**: Insights into dining trends and customer preferences.
-- An advanced chatbot capable of answering specific questions about restaurants (e.g., cuisine type, amenities, operating hours) using RAG and LLM integration.
+SentimentSift is designed as a modular, AI-powered platform for extracting objective insights from online restaurant reviews. The architecture features:
 
----
-
-## **Project Overview**
-
- ![Theme](WorkFlow.jpg)
-
-### **Scope**
-
-#### **Data Sources**
-The project will use data from:
-- **Google API**: For reviews and ratings due to its vast dataset.
-- **Yelp API**: Provides detailed reviews and metadata about restaurants.
-- **Twitter API**: Acts as a social media analytics tool with free API access.
-
-#### **Technologies**
-1. **PyABSA**: Aspect-based sentiment analysis for extracting sentiment scores for food, service, and ambiance.
-2. **BERTopic**: Extracts recurring themes from customer reviews.
-3. **Pinecone**: Stores vector embeddings with metadata (e.g., restaurant name, location).
-4. **Snowflake**: Used for data preprocessing and validation with dbt support.
-5. **Streamlit**: Provides an interactive UI for querying trends and visualizing insights.
-6. **LangChain & OpenAI GPT-4**: Combines RAG with LLMs for chatbot functionality.
-
-#### **Deliverables**
-1. Cleaned datasets stored in JSON format in Amazon S3.
-2. Normalized sentiment scores visualized on a scale of 10/100.
-3. Tiered summary reports highlighting trends grouped by restaurant rankings.
-4. An interactive Streamlit interface enabling:
-   - Natural language queries.
-   - Visualization of trends (e.g., top-tier restaurants by cuisine or amenities).
-5. A RAG-powered chatbot integrated with LLMs to answer user queries with contextually relevant responses.
+- **Data Ingestion:** Collects structured and unstructured data from APIs (Google, Yelp, Twitter) using Rapid API.
+- **Preprocessing:** Cleans, normalizes, and enriches data with metadata.
+- **Storage:** Raw data in JSON; processed data in Snowflake.
+- **Analysis:**
+  - *Aspect-Based Sentiment Analysis* (PyABSA) for food, service, ambiance.
+  - *Theme Extraction* (BERTopic) for recurring topics.
+- **Vector Embedding:** Stores embeddings in Pinecone for semantic search.
+- **UI & Interaction:** Streamlit for visualization and querying.
+- **Conversational AI:** RAG-powered chatbot (Gemini 2.0 flash) for natural language queries and context-aware responses.
+- **SQL Agent:** Vanna.AI for advanced querying.
 
 ---
 
-### **Stakeholders**
-- **Restaurant Owners:** Gain insights into strengths/weaknesses through actionable reports.
-- **Market Researchers:** Identify emerging trends in dining preferences using consolidated analytics.
-- **Customers:** Access unbiased, normalized ratings to make informed dining decisions.
+### Services Utilized
+
+- **Rapid API:** Review and metadata aggregation.
+- **Snowflake:** Data validation and storage.
+- **PyABSA:** Aspect-based sentiment scoring.
+- **BERTopic:** Topic modeling.
+- **Pinecone:** Vector database for embeddings.
+- **Streamlit:** Interactive web interface.
+- **Gemini 2.0 flash:** RAG chatbot integration.
+- **Vanna.AI:** RAG-powered SQL agent.
 
 ---
 
-## **Problem Statement**
+### Challenges Encountered & Solutions
 
-### **Current Challenges**
-1. Managing unstructured review data across multiple platforms with inconsistent rating scales.
-2. Limited tools to extract meaningful insights from customer feedback.
-3. Inability to identify trends or patterns in high-rated vs low-rated restaurants.
-
-### **Opportunities**
-1. Improved decision-making could lead to a 10% increase in customer retention by addressing weaknesses identified through sentiment analysis.
-2. Enhanced analytics could reduce response time to negative reviews by providing real-time alerts on recurring issues.
-
-### **Use Cases**
-1. Consolidated ratings for Boston-based restaurants based on sentiment scores for food, service, and ambiance.
-2. Tiered summary reports highlighting common themes in customer feedback for high-performing restaurants.
-3. Interactive querying of restaurant trends via Streamlit UI.
-4. Chatbot functionality enabling advanced queries such as:
-   - "What are the top-rated Italian restaurants in Boston?"
-   - "Which restaurants are open late with outdoor seating?"
-   - "What are common complaints about service in low-rated restaurants?"
+| Challenge                          | Description                                                                                      | Solution/Workaround                                                                                   |
+|-------------------------------------|--------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------|
+| **Limited Data Access**             | Free, high-quality review data was scarce, limiting analysis reliability.                        | Prioritized data cleaning, flagged low-data restaurants, and planned for future dataset expansion.    |
+| **Data Quality & Normalization**    | Reviews from different sources had inconsistent scales and formats.                              | Implemented robust preprocessing and normalization routines; flagged ambiguous or sparse data[5][6].   |
+| **Sentiment Complexity**            | Mixed sentiments, sarcasm, and cultural nuances complicated analysis.                            | Used aspect-based models and topic extraction to isolate and clarify sentiment[4][5][6].              |
+| **Multi-Agent Architecture**        | Coordinating multiple LLM agents for bias reduction increased system complexity.                  | Iteratively refined agent prompts and workflows for better collaboration and aggregation.              |
+| **Integration Overhead**            | Combining multiple services and tools led to technical challenges.                               | Modularized the pipeline and used standard APIs for smoother integration and troubleshooting.          |
 
 ---
 
-## **Methodology**
+### Overcoming Challenges
 
-### **Data Sources**
-The project will collect structured (restaurant details) and unstructured (reviews) data from Google API, Yelp API, and Twitter API.
-
-#### Exception Handling:
-- Restaurants with limited reviews or no ratings will be flagged during preprocessing.
-
-### **Technologies and Tools**
-1. PyABSA for aspect-based sentiment analysis.
-2. BERTopic for theme extraction from labeled text generated by PyABSA.
-3. Pinecone as the vector database for storing embeddings with metadata.
-4. LangChain & OpenAI GPT-4 for RAG-powered chatbot integration.
+- **Data Limitations:** Focused on maximizing value from available data, clearly flagging cases with insufficient information, and designing the system for easy scaling as more data becomes available[5].
+- **Normalization:** Developed custom scripts to standardize ratings and sentiment scores, ensuring comparability across sources[5][6].
+- **Sentiment Nuance:** Leveraged advanced NLP models capable of aspect-level analysis and topic modeling to address mixed sentiments and contextual subtleties[4][5][6].
+- **System Integration:** Adopted a modular approach, allowing independent development and testing of each component before full pipeline integration.
 
 ---
 
-### **Data Pipeline Design**
+### Development Insights
 
-#### Workflow Diagram
-Data Ingestion:
-
-Collect structured (restaurant details) and unstructured (reviews) data via APIs.
-
-Data Preprocessing:
-
-Normalize ratings across platforms; clean text; add metadata.
-
-Data Storage:
-
-Store raw JSON files in Amazon S3; stage preprocessed data in Snowflake.
-
-Sentiment Analysis & Theme Extraction:
-
-Use PyABSA for aspect-based scoring; feed labeled text into BERTopic.
-
-Vector Embedding Storage:
-
-Store embeddings with metadata in Pinecone.
-
-Chatbot Integration:
-
-Use LangChain & GPT-4 to build a RAG-powered chatbot for advanced queries.
-
-Visualization & Querying:
-
-Develop Streamlit UI for querying trends and visualizing insights.
-
-text
+The project highlighted the importance of robust data collection, preprocessing, and the need for domain-specific models to handle the nuances of sentiment analysis. By iteratively refining both the technical pipeline and analytical models, SentimentSift was able to deliver actionable, unbiased insights despite initial data and integration hurdles.
 
 ---
 
-## **Project Plan and Timeline**
 
-### Timeline
-| Day       | Task                                                                                   | Assigned To                  |
-|-----------|-----------------------------------------------------------------------------------------|------------------------------|
-| Day 1–2   | API integration; initial data collection; store raw JSON files in S3                  | Data Engineer                |
-| Day 3–4   | Data cleaning/preprocessing; Snowflake setup                                           | Data Engineer                |
-| Day 5–6   | Sentiment analysis implementation using PyABSA                                         | Machine Learning Engineer    |
-| Day 7     | RAG pipeline setup; Pinecone integration; LLM fine-tuning                              | Machine Learning Engineer    |
-| Day 8–9   | Theme extraction using BERTopic                                                       | Machine Learning Engineer    |
-| Day 10–11 | Streamlit UI development                                                              | Frontend Developer           |
-| Day 12–13 | Chatbot enhancement with RAG/LLM integration                                           | ML Engineer & Frontend Dev   |
-| Day 14    | Final testing; deployment                                                             | All Team Members             |
+## Stakeholders
+
+- **Restaurant Owners:** Actionable reports on strengths/weaknesses.
+- **Market Researchers:** Analytics for emerging dining trends.
+- **Customers:** Unbiased, normalized ratings for decision-making.
 
 ---
 
-## **Resources and Team**
+## Problem Statement
 
-### Personnel
-- Data Engineer: Responsible for API integration, data collection/preprocessing, Snowflake setup.
-- Machine Learning Engineer: Implements sentiment analysis (PyABSA), theme extraction (BERTopic), RAG pipeline setup, chatbot enhancement.
-- Frontend Developer: Develops the Streamlit UI interface; integrates chatbot functionality.
+### Current Challenges
+
+- Managing unstructured review data across multiple platforms with inconsistent rating scales.
+- Limited tools for extracting meaningful insights from customer feedback.
+- Difficulty identifying trends in high- vs. low-rated restaurants.
+
+### Opportunities
+
+- Improved decision-making could boost customer retention.
+- Enhanced analytics for real-time alerts on recurring issues.
+
+### Use Cases
+
+- Consolidated ratings for Boston restaurants based on sentiment scores.
+- Tiered summary reports for high-performing restaurants.
+- Interactive querying of trends via Streamlit UI.
+- Chatbot queries such as:
+  - "Top-rated Italian restaurants in Boston?"
+  - "Restaurants open late with outdoor seating?"
+  - "Common complaints about service in low-rated restaurants?"
+
 
 ---
 
-## **Risks and Mitigation Strategies**
+
+## Resources and Team
+
+- **Data Engineer:** API integration, data collection/preprocessing, Snowflake setup.
+- **Machine Learning Engineer:** Sentiment analysis (PyABSA), theme extraction (BERTopic), RAG pipeline, chatbot.
+- **Frontend Developer:** Streamlit UI, chatbot integration.
+
+---
+
+## Risks
 
 ### Risks
-1. API rate limits or geographic restrictions may delay data collection.
-2. Sparse review data may impact insight accuracy.
-3. Integration challenges between multiple technologies/tools.
 
-### Mitigation Strategies
-1. Use caching mechanisms or multiple API keys to handle rate limits effectively.
-2. Flag insufficient data cases during preprocessing; supplement with synthetic datasets if necessary.
-3. Conduct regular testing during integration phases to identify bottlenecks early.
+- API rate limits may delay data collection.
+- Sparse review data may impact insight accuracy.
+- Integration challenges between multiple technologies/tools.
 
 ---
 
-## **Expected Outcomes and Benefits**
-
-### Measurable Goals
-1. Achieve >90% accuracy in aspect-based sentiment analysis results.
-2. Reduce time taken to analyze customer feedback by at least 50%.
 
 ### Expected Benefits
-1. Actionable insights into strengths/weaknesses grouped by restaurant tiers for owners.
-2. Access to unbiased ratings normalized across platforms for customers.
-3. Identification of emerging trends in customer preferences for market researchers.
+
+- Actionable insights for restaurant owners by tier.
+- Unbiased, normalized ratings for customers.
+- Trend identification for market researchers.
+- Reduction in time to analyze customer feedback.
 
 ---
 
-## **Conclusion**
-SentimentSift integrates advanced tools like PyABSA, BERTopic, Pinecone, LangChain, OpenAI GPT-4, Snowflake, and Streamlit to bridge the gap between unstructured feedback and actionable insights within the restaurant industry—revolutionizing decision-making while enhancing customer satisfaction through its innovative RAG-powered chatbot functionality!
+## Conclusion
 
-## **Authors**
-- Team: Anuj Rajendraprasad Nene, Sicheng Bao, Yung-Rou Ko
-- Course: 7245 Big-Data Final Project
+SentimentSift integrates advanced tools (PyABSA, BERTopic, Pinecone, LangChain, OpenAI GPT-4, Snowflake, Streamlit) to bridge the gap between unstructured feedback and actionable insights—revolutionizing decision-making for the restaurant industry with its RAG-powered chatbot.
 
 ---
+
+
+
+
+
+
+
