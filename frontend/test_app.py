@@ -1,14 +1,29 @@
 # test_app.py - Integrated version, combining original functionality and new interface design
+import sys, os
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+from api.rag_agent import ReviewSummarizationAgent
+
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import os
 import time
 import random
 from dotenv import load_dotenv
 from vanna.chromadb import ChromaDB_VectorStore
 from vanna.google import GoogleGeminiChat
 
+
+@st.cache_resource
+def get_rag_agent():
+    try:
+        agent = ReviewSummarizationAgent()
+        return agent
+    except Exception as e:
+        st.error(f"Error initializing RAG agent: {str(e)}")
+        return None
+    
 # Load environment variables
 load_dotenv()
 
@@ -64,9 +79,35 @@ class BostonCoffeeVanna(ChromaDB_VectorStore, GoogleGeminiChat):
         
         # Add example questions
         self._add_example_questions()
-    
+
+
+        sample_sql_query = """
+        SELECT 
+            NAME, 
+            FULL_ADDRESS, 
+            RATING, 
+            SENTIMENT_SCORES_SERVICE, 
+            SENTIMENT_SCORES_SERVICE_TIER,
+            SENTIMENT_SCORES_FOOD,
+            SENTIMENT_SCORES_FOOD_TIER,
+            SENTIMENT_SCORES_AMBIANCE,
+            SENTIMENT_SCORES_AMBIANCE_TIER,
+            LATITUDE,
+            LONGITUDE,
+            TOPICS_1_KEYWORDS,
+            TOPICS_1_NAME,
+            TOPICS_1_COUNT,
+            PRICE_LEVEL,
+            REVIEW_COUNT,
+            TYPE
+        FROM FINAL_DB.FINAL.COFFEE_SHOPS
+        WHERE FULL_ADDRESS LIKE '%Boston%'
+        ORDER BY RATING DESC
+        LIMIT 200;
+        """
+
     def _add_documentation(self):
-        """Add database documentation"""
+        """Add database documentation with updated column names"""
         self.add_documentation("""
         The FINAL_DB.FINAL.COFFEE_SHOPS table contains data about coffee shops with the following columns:
         - BUSINESS_ID: Unique identifier for each coffee shop
@@ -79,20 +120,60 @@ class BostonCoffeeVanna(ChromaDB_VectorStore, GoogleGeminiChat):
         - PHONE_NUMBER: Contact phone number
         - PRICE_LEVEL: Price category ($, $$, $$$, or $$$$)
         - TYPE: Type of establishment (e.g., 'Coffee Shop', 'Cafe', etc.)
-        - SENTIMENT_SERVICE: Score for service quality (0-1 scale)
-        - SENTIMENT_SERVICE_TIER: Categorization of service quality (Poor, Average, Good, Excellent)
-        - SENTIMENT_FOOD: Score for food quality (0-1 scale)
-        - SENTIMENT_FOOD_TIER: Categorization of food quality (Poor, Average, Good, Excellent)
-        - SENTIMENT_AMBIANCE: Score for ambiance quality (0-1 scale)
-        - SENTIMENT_AMBIANCE_TIER: Categorization of ambiance quality (Poor, Average, Good, Excellent)
-        - TOPIC_ID: Identifier for topic analysis
-        - TOPIC_COUNT: Number of mentions for this topic
-        - TOPIC_KEYWORDS: Keywords associated with this topic
-        - TOPIC_NAME: Name of the topic identified in reviews
-        - TOPIC_RANK: Ranking of the topic importance
+        
+        # Sentiment scores (updated column names)
+        - SENTIMENT_SCORES_SERVICE: Score for service quality (0-1 scale)
+        - SENTIMENT_SCORES_SERVICE_TIER: Categorization of service quality (Tier-1, Tier-2, etc.)
+        - SENTIMENT_SCORES_FOOD: Score for food quality (0-1 scale)
+        - SENTIMENT_SCORES_FOOD_TIER: Categorization of food quality (Tier-1, Tier-2, etc.)
+        - SENTIMENT_SCORES_AMBIANCE: Score for ambiance quality (0-1 scale)
+        - SENTIMENT_SCORES_AMBIANCE_TIER: Categorization of ambiance quality (Tier-1, Tier-2, etc.)
+        
+        # Sentiment percentages
+        - SENTIMENT_PERCENTAGES_SERVICE_GOOD_PCT: Percentage of good service mentions
+        - SENTIMENT_PERCENTAGES_SERVICE_NEUTRAL_PCT: Percentage of neutral service mentions
+        - SENTIMENT_PERCENTAGES_SERVICE_BAD_PCT: Percentage of bad service mentions
+        - SENTIMENT_PERCENTAGES_FOOD_GOOD_PCT: Percentage of good food mentions
+        - SENTIMENT_PERCENTAGES_FOOD_NEUTRAL_PCT: Percentage of neutral food mentions
+        - SENTIMENT_PERCENTAGES_FOOD_BAD_PCT: Percentage of bad food mentions
+        - SENTIMENT_PERCENTAGES_AMBIANCE_NEUTRAL_PCT: Percentage of neutral ambiance mentions
+        
+        # Topics information
+        - TOPICS_1_TOPIC_ID: Identifier for topic 1
+        - TOPICS_1_COUNT: Number of mentions for topic 1
+        - TOPICS_1_KEYWORDS: Keywords associated with topic 1
+        - TOPICS_1_NAME: Name of topic 1
+        
+        - TOPICS_2_TOPIC_ID: Identifier for topic 2
+        - TOPICS_2_COUNT: Number of mentions for topic 2
+        - TOPICS_2_KEYWORDS: Keywords associated with topic 2
+        - TOPICS_2_NAME: Name of topic 2
+        
+        - TOPICS_3_TOPIC_ID: Identifier for topic 3
+        - TOPICS_3_COUNT: Number of mentions for topic 3
+        - TOPICS_3_KEYWORDS: Keywords associated with topic 3
+        - TOPICS_3_NAME: Name of topic 3
+        
+        # Additional information
         - WEBSITE: Website URL of the coffee shop
+        - TLD: Top Level Domain of the website
+        - TIMEZONE: Timezone of the coffee shop location
+        - VERIFIED: Whether the business is verified
+        - SUBTYPES: Additional subtypes of the business
+        - SUBTYPE_GCIDS: Google Category IDs for subtypes
+        
+        # Working hours
+        - WORKING_HOURS_MONDAY: Monday business hours
+        - WORKING_HOURS_TUESDAY: Tuesday business hours
+        - WORKING_HOURS_WEDNESDAY: Wednesday business hours
+        - WORKING_HOURS_THURSDAY: Thursday business hours
+        - WORKING_HOURS_FRIDAY: Friday business hours
+        - WORKING_HOURS_SATURDAY: Saturday business hours
+        - WORKING_HOURS_SUNDAY: Sunday business hours
+        
+        - ZIPCODE: Postal code of the coffee shop location
         """)
-    
+        
     def _add_example_questions(self):
         """Add example questions to train Vanna"""
         self.add_question_sql(
@@ -102,19 +183,21 @@ class BostonCoffeeVanna(ChromaDB_VectorStore, GoogleGeminiChat):
                 NAME, 
                 FULL_ADDRESS, 
                 RATING, 
-                SENTIMENT_FOOD, 
-                SENTIMENT_FOOD_TIER,
-                SENTIMENT_SERVICE,
-                SENTIMENT_SERVICE_TIER,
-                SENTIMENT_AMBIANCE,
-                SENTIMENT_AMBIANCE_TIER,
+                SENTIMENT_SCORES_FOOD, 
+                SENTIMENT_SCORES_FOOD_TIER,
+                SENTIMENT_SCORES_SERVICE,
+                SENTIMENT_SCORES_SERVICE_TIER,
+                SENTIMENT_SCORES_AMBIANCE,
+                SENTIMENT_SCORES_AMBIANCE_TIER,
                 LATITUDE,
                 LONGITUDE,
-                TOPIC_KEYWORDS,
-                TOPIC_NAME,
-                TOPIC_COUNT
+                TOPICS_1_KEYWORDS,
+                TOPICS_1_NAME,
+                TOPICS_1_COUNT,
+                PRICE_LEVEL,
+                TYPE
             FROM FINAL_DB.FINAL.COFFEE_SHOPS
-            ORDER BY SENTIMENT_FOOD DESC
+            ORDER BY SENTIMENT_SCORES_FOOD DESC
             LIMIT 10;
             """
         )
@@ -126,19 +209,21 @@ class BostonCoffeeVanna(ChromaDB_VectorStore, GoogleGeminiChat):
                 NAME, 
                 FULL_ADDRESS, 
                 RATING, 
-                SENTIMENT_SERVICE, 
-                SENTIMENT_SERVICE_TIER,
-                SENTIMENT_FOOD,
-                SENTIMENT_FOOD_TIER,
-                SENTIMENT_AMBIANCE,
-                SENTIMENT_AMBIANCE_TIER,
+                SENTIMENT_SCORES_SERVICE, 
+                SENTIMENT_SCORES_SERVICE_TIER,
+                SENTIMENT_SCORES_FOOD,
+                SENTIMENT_SCORES_FOOD_TIER,
+                SENTIMENT_SCORES_AMBIANCE,
+                SENTIMENT_SCORES_AMBIANCE_TIER,
                 LATITUDE,
                 LONGITUDE,
-                TOPIC_KEYWORDS,
-                TOPIC_NAME,
-                TOPIC_COUNT
+                TOPICS_1_KEYWORDS,
+                TOPICS_1_NAME,
+                TOPICS_1_COUNT,
+                PRICE_LEVEL,
+                TYPE
             FROM FINAL_DB.FINAL.COFFEE_SHOPS
-            ORDER BY SENTIMENT_SERVICE ASC
+            ORDER BY SENTIMENT_SCORES_SERVICE ASC
             LIMIT 10;
             """
         )
@@ -150,20 +235,22 @@ class BostonCoffeeVanna(ChromaDB_VectorStore, GoogleGeminiChat):
                 NAME, 
                 FULL_ADDRESS, 
                 RATING, 
-                SENTIMENT_AMBIANCE, 
-                SENTIMENT_AMBIANCE_TIER,
-                SENTIMENT_FOOD,
-                SENTIMENT_FOOD_TIER,
-                SENTIMENT_SERVICE,
-                SENTIMENT_SERVICE_TIER,
+                SENTIMENT_SCORES_AMBIANCE, 
+                SENTIMENT_SCORES_AMBIANCE_TIER,
+                SENTIMENT_SCORES_FOOD,
+                SENTIMENT_SCORES_FOOD_TIER,
+                SENTIMENT_SCORES_SERVICE,
+                SENTIMENT_SCORES_SERVICE_TIER,
                 LATITUDE,
                 LONGITUDE,
-                TOPIC_KEYWORDS,
-                TOPIC_NAME,
-                TOPIC_COUNT
+                TOPICS_1_KEYWORDS,
+                TOPICS_1_NAME,
+                TOPICS_1_COUNT,
+                PRICE_LEVEL,
+                TYPE
             FROM FINAL_DB.FINAL.COFFEE_SHOPS
             WHERE FULL_ADDRESS LIKE '%Boston%'
-            ORDER BY SENTIMENT_AMBIANCE DESC
+            ORDER BY SENTIMENT_SCORES_AMBIANCE DESC
             LIMIT 10;
             """
         )
@@ -175,19 +262,21 @@ class BostonCoffeeVanna(ChromaDB_VectorStore, GoogleGeminiChat):
                 NAME, 
                 FULL_ADDRESS, 
                 RATING, 
-                SENTIMENT_FOOD, 
-                SENTIMENT_FOOD_TIER,
-                SENTIMENT_SERVICE,
-                SENTIMENT_SERVICE_TIER,
-                SENTIMENT_AMBIANCE,
-                SENTIMENT_AMBIANCE_TIER,
+                SENTIMENT_SCORES_FOOD, 
+                SENTIMENT_SCORES_FOOD_TIER,
+                SENTIMENT_SCORES_SERVICE,
+                SENTIMENT_SCORES_SERVICE_TIER,
+                SENTIMENT_SCORES_AMBIANCE,
+                SENTIMENT_SCORES_AMBIANCE_TIER,
                 LATITUDE,
                 LONGITUDE,
-                TOPIC_KEYWORDS,
-                TOPIC_NAME,
-                TOPIC_COUNT
+                TOPICS_1_KEYWORDS,
+                TOPICS_1_NAME,
+                TOPICS_1_COUNT,
+                PRICE_LEVEL,
+                TYPE
             FROM FINAL_DB.FINAL.COFFEE_SHOPS
-            ORDER BY SENTIMENT_FOOD DESC
+            ORDER BY SENTIMENT_SCORES_FOOD DESC
             LIMIT 10;
             """
         )
@@ -195,7 +284,7 @@ class BostonCoffeeVanna(ChromaDB_VectorStore, GoogleGeminiChat):
 # Modified display_restaurant_list_safe function to adjust display format
 
 def display_restaurant_list_safe(df):
-    """Safely display coffee shop list, handling various possible error conditions, and displaying price and ratings according to new requirements"""
+    """Safely display coffee shop list, handling various possible error conditions, and displaying price and rating tiers"""
     # Final safety check
     if df is None or not isinstance(df, pd.DataFrame) or df.empty:
         st.info("No coffee shops found matching the criteria.")
@@ -221,18 +310,18 @@ def display_restaurant_list_safe(df):
                 col1, col2, col3 = st.columns(3)
                 
                 with col1:
-                    if isinstance(row, pd.Series) and 'SENTIMENT_FOOD_TIER' in row and row['SENTIMENT_FOOD_TIER'] is not None:
-                        food_tier = row['SENTIMENT_FOOD_TIER']
+                    if isinstance(row, pd.Series) and 'SENTIMENT_SCORES_FOOD_TIER' in row and row['SENTIMENT_SCORES_FOOD_TIER'] is not None:
+                        food_tier = row['SENTIMENT_SCORES_FOOD_TIER']
                         st.markdown(f"**Food**  \n{food_tier}")
                 
                 with col2:
-                    if isinstance(row, pd.Series) and 'SENTIMENT_AMBIANCE_TIER' in row and row['SENTIMENT_AMBIANCE_TIER'] is not None:
-                        ambiance_tier = row['SENTIMENT_AMBIANCE_TIER']
+                    if isinstance(row, pd.Series) and 'SENTIMENT_SCORES_AMBIANCE_TIER' in row and row['SENTIMENT_SCORES_AMBIANCE_TIER'] is not None:
+                        ambiance_tier = row['SENTIMENT_SCORES_AMBIANCE_TIER']
                         st.markdown(f"**Ambiance**  \n{ambiance_tier}")
                 
                 with col3:
-                    if isinstance(row, pd.Series) and 'SENTIMENT_SERVICE_TIER' in row and row['SENTIMENT_SERVICE_TIER'] is not None:
-                        service_tier = row['SENTIMENT_SERVICE_TIER']
+                    if isinstance(row, pd.Series) and 'SENTIMENT_SCORES_SERVICE_TIER' in row and row['SENTIMENT_SCORES_SERVICE_TIER'] is not None:
+                        service_tier = row['SENTIMENT_SCORES_SERVICE_TIER']
                         st.markdown(f"**Service**  \n{service_tier}")
                 
                 # Display address
@@ -249,9 +338,8 @@ def display_restaurant_list_safe(df):
         except Exception as e:
             st.error(f"Error displaying shop {i}: {str(e)}")
 
-# Modified display_shop_details function to adjust details page display
 def display_shop_details(shop_data):
-    """Display details of the selected coffee shop, including map and ratings"""
+    """Display detailed information for the selected coffee shop including map and review summary"""
     st.subheader(f"☕ {shop_data['NAME']}")
     
     # Basic information
@@ -273,34 +361,34 @@ def display_shop_details(shop_data):
     metrics_col1, metrics_col2, metrics_col3 = st.columns(3)
     
     with metrics_col1:
-        if 'SENTIMENT_SERVICE' in shop_data and shop_data['SENTIMENT_SERVICE'] is not None:
-            service_score = shop_data['SENTIMENT_SERVICE']
+        if 'SENTIMENT_SCORES_SERVICE' in shop_data and shop_data['SENTIMENT_SCORES_SERVICE'] is not None:
+            service_score = shop_data['SENTIMENT_SCORES_SERVICE']
             if isinstance(service_score, (int, float)):
                 st.metric("Service Rating", f"{service_score:.2f}", 
                          delta="Higher" if service_score > 0.5 else "Lower")
         
-        if 'SENTIMENT_SERVICE_TIER' in shop_data and shop_data['SENTIMENT_SERVICE_TIER'] is not None:
-            st.write(f"**Tier:** {shop_data['SENTIMENT_SERVICE_TIER']}")
+        if 'SENTIMENT_SCORES_SERVICE_TIER' in shop_data and shop_data['SENTIMENT_SCORES_SERVICE_TIER'] is not None:
+            st.write(f"**Tier:** {shop_data['SENTIMENT_SCORES_SERVICE_TIER']}")
     
     with metrics_col2:
-        if 'SENTIMENT_FOOD' in shop_data and shop_data['SENTIMENT_FOOD'] is not None:
-            food_score = shop_data['SENTIMENT_FOOD']
+        if 'SENTIMENT_SCORES_FOOD' in shop_data and shop_data['SENTIMENT_SCORES_FOOD'] is not None:
+            food_score = shop_data['SENTIMENT_SCORES_FOOD']
             if isinstance(food_score, (int, float)):
                 st.metric("Food Rating", f"{food_score:.2f}", 
                          delta="Higher" if food_score > 0.5 else "Lower")
         
-        if 'SENTIMENT_FOOD_TIER' in shop_data and shop_data['SENTIMENT_FOOD_TIER'] is not None:
-            st.write(f"**Tier:** {shop_data['SENTIMENT_FOOD_TIER']}")
+        if 'SENTIMENT_SCORES_FOOD_TIER' in shop_data and shop_data['SENTIMENT_SCORES_FOOD_TIER'] is not None:
+            st.write(f"**Tier:** {shop_data['SENTIMENT_SCORES_FOOD_TIER']}")
     
     with metrics_col3:
-        if 'SENTIMENT_AMBIANCE' in shop_data and shop_data['SENTIMENT_AMBIANCE'] is not None:
-            ambiance_score = shop_data['SENTIMENT_AMBIANCE']
+        if 'SENTIMENT_SCORES_AMBIANCE' in shop_data and shop_data['SENTIMENT_SCORES_AMBIANCE'] is not None:
+            ambiance_score = shop_data['SENTIMENT_SCORES_AMBIANCE']
             if isinstance(ambiance_score, (int, float)):
                 st.metric("Ambiance Rating", f"{ambiance_score:.2f}", 
                          delta="Higher" if ambiance_score > 0.5 else "Lower")
         
-        if 'SENTIMENT_AMBIANCE_TIER' in shop_data and shop_data['SENTIMENT_AMBIANCE_TIER'] is not None:
-            st.write(f"**Tier:** {shop_data['SENTIMENT_AMBIANCE_TIER']}")
+        if 'SENTIMENT_SCORES_AMBIANCE_TIER' in shop_data and shop_data['SENTIMENT_SCORES_AMBIANCE_TIER'] is not None:
+            st.write(f"**Tier:** {shop_data['SENTIMENT_SCORES_AMBIANCE_TIER']}")
     
     # Map view
     st.subheader("📍 Location")
@@ -308,7 +396,7 @@ def display_shop_details(shop_data):
         lat_val = shop_data["LATITUDE"]
         lon_val = shop_data["LONGITUDE"]
         
-        # Ensure latitude and longitude are valid numbers
+        # Ensure coordinates are valid numbers
         if isinstance(lat_val, (int, float)) and isinstance(lon_val, (int, float)) and lat_val != 0 and lon_val != 0:
             map_df = pd.DataFrame({
                 "lat": [lat_val],
@@ -328,16 +416,132 @@ def display_shop_details(shop_data):
             fig.update_layout(margin={"r":0,"t":0,"l":0,"b":0})
             st.plotly_chart(fig, use_container_width=True)
         else:
-            st.info(f"This coffee shop's location information is invalid or incomplete.")
+            st.info("This coffee shop has invalid or incomplete location information.")
     else:
         st.info("This coffee shop has no location information.")
+    
+    # Review summary section
+    st.subheader("💬 Review Summary")
+    
+    # Get identifier for RAG query
+    business_id = None
+    
+    # Try to get business_id from various possible fields
+    id_fields = ['BUSINESS_ID', 'business_id', 'GOOGLE_ID', 'google_id', 'PLACE_ID', 'place_id', 'CID', 'cid']
+    for field in id_fields:
+        if field in shop_data and shop_data[field] is not None:
+            business_id = shop_data[field]
+            break
+    
+    # Fallback to NAME if no ID is found
+    if business_id is None and 'NAME' in shop_data:
+        business_id = shop_data['NAME']
+    
+    # Initialize review summary session state if it doesn't exist
+    if 'review_summary' not in st.session_state:
+        st.session_state.review_summary = {}
+    
+    # Display generate summary button
+    if business_id:
+        # If we don't already have a summary for this business
+        if business_id not in st.session_state.review_summary:
+            if st.button("Generate Review Summary"):
+                with st.spinner("Analyzing reviews and generating summary..."):
+                    try:
+                        # Try to import the module using various methods
+                        try:
+                            # Use the correct file name: rag_agent.py
+                            from api.rag_agent import ReviewSummarizationAgent
+                        except ImportError:
+                            try:
+                                # Try import from current directory
+                                import sys
+                                import os
+                                current_dir = os.path.dirname(os.path.abspath(__file__))
+                                if current_dir not in sys.path:
+                                    sys.path.append(current_dir)
+                                from api.rag_agent import ReviewSummarizationAgent
+                            except (ImportError, NameError):
+                                st.error("Could not import ReviewSummarizationAgent. Make sure rag_agent.py is in the same directory as this app.")
+                                st.info("Please check that you have the rag_agent.py file in your project directory.")
+                                # Show current directory files
+                                st.code("# Current directory files\nimport os\nprint(os.listdir('.'))", language="python")
+                                return
+                        
+                        # Initialize RAG agent
+                        rag_agent = ReviewSummarizationAgent()
+                        
+                        # Generate summary
+                        summary = rag_agent.summarize_business_reviews(business_id)
+                        
+                        # Store summary
+                        st.session_state.review_summary[business_id] = summary
+                        
+                        # Use st.rerun() instead of the deprecated experimental_rerun
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error generating review summary: {str(e)}")
+                        import traceback
+                        st.code(traceback.format_exc())
+        
+        # Display summary if available
+        if business_id in st.session_state.review_summary:
+            st.markdown(st.session_state.review_summary[business_id])
+        else:
+            # Show topic information as a preview
+            has_topic_info = False
+            
+            # Try to display Topic 1 information
+            if ('TOPICS_1_KEYWORDS' in shop_data and shop_data['TOPICS_1_KEYWORDS'] is not None):
+                st.markdown("### Preview of Topics")
+                st.markdown(f"**Topic 1:** {shop_data['TOPICS_1_KEYWORDS']}")
+                has_topic_info = True
+            
+                # Try to display Topic 2 information
+                if ('TOPICS_2_KEYWORDS' in shop_data and shop_data['TOPICS_2_KEYWORDS'] is not None):
+                    st.markdown(f"**Topic 2:** {shop_data['TOPICS_2_KEYWORDS']}")
+                
+                # Try to display Topic 3 information
+                if ('TOPICS_3_KEYWORDS' in shop_data and shop_data['TOPICS_3_KEYWORDS'] is not None):
+                    st.markdown(f"**Topic 3:** {shop_data['TOPICS_3_KEYWORDS']}")
+            
+            if not has_topic_info:
+                st.info("Click 'Generate Review Summary' to analyze reviews and get detailed insights.")
+    else:
+        st.warning("No identifier available for this coffee shop. Cannot generate review summary.")
 
-# Modified customer_explorer_page function, increasing coffee shop display count
+# Update the main function to initialize the RAG agent
+def main():
+    # Existing initializations...
+    
+    # Initialize Vanna and connect to Snowflake
+    @st.cache_resource
+    def get_vanna():
+        try:
+            vn = BostonCoffeeVanna()
+            return vn
+        except Exception as e:
+            st.error(f"Error initializing Vanna: {str(e)}")
+            return None
+    
+    # Also initialize the RAG agent for review summaries
+    @st.cache_resource
+    def get_rag_agent():
+        try:
+            return ReviewSummarizationAgent()
+        except Exception as e:
+            st.error(f"Error initializing RAG agent: {str(e)}")
+            return None
+
 def customer_explorer_page(vn):
     """Customer browsing page, displaying coffee shop list and details"""
     st.header("Boston Coffee Shop Directory")
     
-    # Get all coffee shop data - increase to 200 shops
+    # Initialize filtered_shops if it doesn't exist yet
+    if "filtered_shops" not in st.session_state:
+        st.session_state.filtered_shops = pd.DataFrame(columns=["NAME", "FULL_ADDRESS", "RATING"])
+    
+    # Get all coffee shop data - increased to 200 shops
     if "all_coffee_shops" not in st.session_state:
         with st.spinner("Loading data..."):
             try:
@@ -346,17 +550,23 @@ def customer_explorer_page(vn):
                     NAME, 
                     FULL_ADDRESS, 
                     RATING, 
-                    SENTIMENT_SERVICE, 
-                    SENTIMENT_SERVICE_TIER,
-                    SENTIMENT_FOOD,
-                    SENTIMENT_FOOD_TIER,
-                    SENTIMENT_AMBIANCE,
-                    SENTIMENT_AMBIANCE_TIER,
+                    SENTIMENT_SCORES_SERVICE, 
+                    SENTIMENT_SCORES_SERVICE_TIER,
+                    SENTIMENT_SCORES_FOOD,
+                    SENTIMENT_SCORES_FOOD_TIER,
+                    SENTIMENT_SCORES_AMBIANCE,
+                    SENTIMENT_SCORES_AMBIANCE_TIER,
                     LATITUDE,
                     LONGITUDE,
-                    TOPIC_KEYWORDS,
-                    TOPIC_NAME,
-                    TOPIC_COUNT,
+                    TOPICS_1_KEYWORDS,
+                    TOPICS_1_NAME,
+                    TOPICS_1_COUNT,
+                    TOPICS_2_KEYWORDS,
+                    TOPICS_2_NAME,
+                    TOPICS_2_COUNT,
+                    TOPICS_3_KEYWORDS,
+                    TOPICS_3_NAME,
+                    TOPICS_3_COUNT,
                     PRICE_LEVEL,
                     TYPE
                 FROM FINAL_DB.FINAL.COFFEE_SHOPS
@@ -366,14 +576,16 @@ def customer_explorer_page(vn):
                 """
                 
                 results = vn.run_sql(query)
-                if results is not None and len(results) > 0:  # Check if results exist and are non-empty
+                if results is not None and len(results) > 0:
                     st.session_state.all_coffee_shops = pd.DataFrame(results)
                     st.session_state.filtered_shops = st.session_state.all_coffee_shops.copy()
                 else:
                     st.error("Unable to fetch coffee shop data.")
+                    st.write("SQL Query:", query)
                     return
             except Exception as e:
                 st.error(f"Error fetching data: {str(e)}")
+                st.write("SQL Query:", query)
                 return
     
     # Set up filters
@@ -384,8 +596,10 @@ def customer_explorer_page(vn):
         min_rating = st.slider("Minimum Rating", 1.0, 5.0, 1.0, 0.5)
     
     with col2:
-        if 'TYPE' in st.session_state.all_coffee_shops.columns:
-            shop_types = ["All"] + sorted(st.session_state.all_coffee_shops['TYPE'].dropna().unique().tolist())
+        if 'all_coffee_shops' in st.session_state and 'TYPE' in st.session_state.all_coffee_shops.columns:
+            # Ensure no None or NaN values in type column
+            valid_types = st.session_state.all_coffee_shops['TYPE'].dropna().unique().tolist()
+            shop_types = ["All"] + sorted(valid_types)
             selected_type = st.selectbox("Shop Type", shop_types)
         else:
             selected_type = "All"
@@ -395,32 +609,42 @@ def customer_explorer_page(vn):
         price_levels = ["All", "$1-10", "$10-20"]
         selected_price = st.selectbox("Price Range", price_levels)
     
-    # Apply filters
-    filtered_df = st.session_state.all_coffee_shops.copy()
-    
-    # Filter by rating
-    filtered_df = filtered_df[filtered_df['RATING'] >= min_rating]
-    
-    # Filter by type
-    if selected_type != "All" and 'TYPE' in filtered_df.columns:
-        filtered_df = filtered_df[filtered_df['TYPE'] == selected_type]
-    
-    # Filter by price - modified price filtering logic
-    if selected_price != "All" and 'PRICE_LEVEL' in filtered_df.columns:
-        if selected_price == "$1-10":
-            filtered_df = filtered_df[filtered_df['PRICE_LEVEL'] == '$']
-        elif selected_price == "$10-20":
-            filtered_df = filtered_df[filtered_df['PRICE_LEVEL'] == '$$']
-    
-    st.session_state.filtered_shops = filtered_df
+    # Ensure we have data before filtering
+    if "all_coffee_shops" in st.session_state and not st.session_state.all_coffee_shops.empty:
+        # Apply filters
+        filtered_df = st.session_state.all_coffee_shops.copy()
+        
+        # Filter by rating
+        if 'RATING' in filtered_df.columns:
+            filtered_df = filtered_df[filtered_df['RATING'] >= min_rating]
+        
+        # Filter by type
+        if selected_type != "All" and 'TYPE' in filtered_df.columns:
+            filtered_df = filtered_df[filtered_df['TYPE'] == selected_type]
+        
+        # Filter by price - modified price filtering logic
+        if selected_price != "All" and 'PRICE_LEVEL' in filtered_df.columns:
+            if selected_price == "$1-10":
+                filtered_df = filtered_df[filtered_df['PRICE_LEVEL'] == '$']
+            elif selected_price == "$10-20":
+                filtered_df = filtered_df[filtered_df['PRICE_LEVEL'] == '$$']
+        
+        st.session_state.filtered_shops = filtered_df
+    else:
+        st.error("Unable to load or filter coffee shop data")
+        return
     
     # Split the page into left and right sections
     col_list, col_detail = st.columns([3, 3])
     
     with col_list:
-        st.subheader(f"Coffee Shop List ({len(filtered_df)} shops)")
-        # Display coffee shop list
-        display_restaurant_list_safe(filtered_df)
+        # Ensure filtered_df exists
+        if 'filtered_shops' in st.session_state and not st.session_state.filtered_shops.empty:
+            st.subheader(f"Coffee Shop List ({len(st.session_state.filtered_shops)} shops)")
+            # Display coffee shop list
+            display_restaurant_list_safe(st.session_state.filtered_shops)
+        else:
+            st.info("No coffee shops found matching the criteria")
     
     with col_detail:
         if st.session_state.selected_shop is not None:
@@ -457,12 +681,37 @@ def home_page():
     for ex in examples:
         st.markdown(f"- *{ex}*")
 
-# Fix the boolean judgment part for DataFrame
+# Modified AI query assistant part, fixing column name issues
 
 def ai_query_assistant_page(vn):
     """AI Query Assistant page, allows users to query using natural language"""
     st.header("AI Query Assistant")
     st.write("Ask questions about Boston coffee shops using natural language.")
+    
+    # Try to fix generated SQL, replacing old column names with new ones
+    def fix_generated_sql(sql_query):
+        """Fix column name issues in generated SQL"""
+        if sql_query is None:
+            return None
+            
+        # Replace all possible old column names
+        replacements = {
+            'SENTIMENT_FOOD': 'SENTIMENT_SCORES_FOOD',
+            'SENTIMENT_SERVICE': 'SENTIMENT_SCORES_SERVICE',
+            'SENTIMENT_AMBIANCE': 'SENTIMENT_SCORES_AMBIANCE',
+            'SENTIMENT_FOOD_TIER': 'SENTIMENT_SCORES_FOOD_TIER',
+            'SENTIMENT_SERVICE_TIER': 'SENTIMENT_SCORES_SERVICE_TIER',
+            'SENTIMENT_AMBIANCE_TIER': 'SENTIMENT_SCORES_AMBIANCE_TIER',
+            'TOPIC_KEYWORDS': 'TOPICS_1_KEYWORDS',
+            'TOPIC_NAME': 'TOPICS_1_NAME',
+            'TOPIC_COUNT': 'TOPICS_1_COUNT'
+        }
+        
+        fixed_sql = sql_query
+        for old, new in replacements.items():
+            fixed_sql = fixed_sql.replace(old, new)
+        
+        return fixed_sql
     
     # Split the page into left and right sections
     chat_col, results_col = st.columns([2, 4])
@@ -496,9 +745,16 @@ def ai_query_assistant_page(vn):
                         # Generate SQL
                         generated_sql = vn.generate_sql(user_question)
                         
-                        if generated_sql:
-                            # Execute query
-                            results = vn.run_sql(generated_sql)
+                        if generated_sql is not None and isinstance(generated_sql, str) and generated_sql.strip():
+                            # Fix generated SQL, replacing old column names with new ones
+                            fixed_sql = fix_generated_sql(generated_sql)
+                            
+                            # Display fixed SQL (for debugging)
+                            with st.expander("Generated SQL (Debug)"):
+                                st.code(fixed_sql, language="sql")
+                            
+                            # Execute the fixed query
+                            results = vn.run_sql(fixed_sql)
                             
                             # Correctly check results
                             if results is not None and len(results) > 0:
@@ -523,7 +779,14 @@ def ai_query_assistant_page(vn):
                         # Add response to chat history
                         st.session_state.chat_history.append({"role": "assistant", "content": response})
                     except Exception as e:
-                        response = f"Error processing your question: {str(e)}"
+                        error_msg = str(e)
+                        response = f"Error processing your question: {error_msg}"
+                        
+                        # If error is related to column names, provide more specific guidance
+                        if "invalid identifier" in error_msg:
+                            column_name = error_msg.split("invalid identifier '")[1].split("'")[0]
+                            response += f"\n\nThe error appears to be related to the column name '{column_name}'. This may be due to changes in the database schema. Please try a different question."
+                        
                         response_placeholder.markdown(response)
                         st.session_state.chat_history.append({"role": "assistant", "content": response})
     
@@ -565,11 +828,13 @@ def ai_query_assistant_page(vn):
                     st.info("Not enough location data to display a map.")
             
             # Display coffee shop list - another safety check
-            display_restaurant_list_safe(st.session_state.filtered_shops)
+            if st.session_state.filtered_shops is not None and not st.session_state.filtered_shops.empty:
+                display_restaurant_list_safe(st.session_state.filtered_shops)
+            else:
+                st.info("No coffee shops match your criteria.")
         else:
             st.info("Enter a question on the left to start querying.")
 
-# Fix DataFrame check in owner_analysis_page function
 def owner_analysis_page(vn):
     """Owner analysis page, providing statistics and insights"""
     st.header("Coffee Shop Data Analysis")
@@ -583,18 +848,18 @@ def owner_analysis_page(vn):
                     NAME, 
                     FULL_ADDRESS, 
                     RATING, 
-                    SENTIMENT_SERVICE, 
-                    SENTIMENT_FOOD,
-                    SENTIMENT_AMBIANCE,
+                    SENTIMENT_SCORES_SERVICE, 
+                    SENTIMENT_SCORES_FOOD,
+                    SENTIMENT_SCORES_AMBIANCE,
                     PRICE_LEVEL,
                     TYPE,
-                    REVIEW_COUNT
+                    REVIEW_COUNT  -- Ensure REVIEW_COUNT field is included
                 FROM FINAL_DB.FINAL.COFFEE_SHOPS
                 WHERE FULL_ADDRESS LIKE '%Boston%'
                 """
                 
                 results = vn.run_sql(query)
-                if results is not None and len(results) > 0:  # Explicitly check results
+                if results is not None and len(results) > 0:
                     st.session_state.all_coffee_shops = pd.DataFrame(results)
                 else:
                     st.error("Unable to fetch coffee shop data.")
@@ -602,13 +867,12 @@ def owner_analysis_page(vn):
             except Exception as e:
                 st.error(f"Error fetching data: {str(e)}")
                 return
-
+    
     # Ensure DataFrame is correctly created
     if "all_coffee_shops" not in st.session_state or st.session_state.all_coffee_shops is None or st.session_state.all_coffee_shops.empty:
         st.error("Unable to load coffee shop data.")
         return
         
-    
     # Create tabs
     tab1, tab2, tab3 = st.tabs(["Rating Overview", "Competitive Analysis", "Trend Analysis"])
     
@@ -623,9 +887,9 @@ def owner_analysis_page(vn):
             "Category": ["Overall Rating", "Food Quality", "Service Quality", "Ambiance Experience"],
             "Average Score": [
                 df["RATING"].mean() / 5,  # Convert 5-star rating to 0-1 range
-                df["SENTIMENT_FOOD"].mean(),
-                df["SENTIMENT_SERVICE"].mean(),
-                df["SENTIMENT_AMBIANCE"].mean()
+                df["SENTIMENT_SCORES_FOOD"].mean(),
+                df["SENTIMENT_SCORES_SERVICE"].mean(),
+                df["SENTIMENT_SCORES_AMBIANCE"].mean()
             ]
         }
         
@@ -637,12 +901,13 @@ def owner_analysis_page(vn):
         # Display highest-rated coffee shops
         st.subheader("Highest Rated Coffee Shops")
         top_shops = df.sort_values("RATING", ascending=False).head(5)
-        st.dataframe(top_shops[["NAME", "RATING", "SENTIMENT_FOOD", "SENTIMENT_SERVICE", "SENTIMENT_AMBIANCE"]])
+        st.dataframe(top_shops[["NAME", "RATING", "SENTIMENT_SCORES_FOOD", "SENTIMENT_SCORES_SERVICE", "SENTIMENT_SCORES_AMBIANCE"]])
         
-        # Display most popular coffee shops
+        # Display most popular coffee shops - now using REVIEW_COUNT
         st.subheader("Most Popular Coffee Shops (Review Count)")
         popular_shops = df.sort_values("REVIEW_COUNT", ascending=False).head(5)
         st.dataframe(popular_shops[["NAME", "REVIEW_COUNT", "RATING"]])
+    
     
     with tab2:
         st.subheader("Competitive Analysis")
@@ -654,9 +919,9 @@ def owner_analysis_page(vn):
             # Group by type
             type_stats = df.groupby('TYPE').agg({
                 'RATING': 'mean',
-                'SENTIMENT_FOOD': 'mean',
-                'SENTIMENT_SERVICE': 'mean',
-                'SENTIMENT_AMBIANCE': 'mean',
+                'SENTIMENT_SCORES_FOOD': 'mean',  # Updated column name
+                'SENTIMENT_SCORES_SERVICE': 'mean',  # Updated column name
+                'SENTIMENT_SCORES_AMBIANCE': 'mean',  # Updated column name
                 'NAME': 'count'
             }).reset_index()
             
@@ -669,7 +934,7 @@ def owner_analysis_page(vn):
             fig = px.bar(
                 type_stats, 
                 x='TYPE', 
-                y=['RATING', 'SENTIMENT_FOOD', 'SENTIMENT_SERVICE', 'SENTIMENT_AMBIANCE'],
+                y=['RATING', 'SENTIMENT_SCORES_FOOD', 'SENTIMENT_SCORES_SERVICE', 'SENTIMENT_SCORES_AMBIANCE'],  # Updated column names
                 title="Rating Comparison by Coffee Shop Type",
                 labels={'TYPE': 'Type', 'value': 'Rating', 'variable': 'Rating Category'},
                 barmode='group'
@@ -683,9 +948,9 @@ def owner_analysis_page(vn):
             # Group by price
             price_stats = df.groupby('PRICE_LEVEL').agg({
                 'RATING': 'mean',
-                'SENTIMENT_FOOD': 'mean',
-                'SENTIMENT_SERVICE': 'mean',
-                'SENTIMENT_AMBIANCE': 'mean',
+                'SENTIMENT_SCORES_FOOD': 'mean',  # Updated column name
+                'SENTIMENT_SCORES_SERVICE': 'mean',  # Updated column name
+                'SENTIMENT_SCORES_AMBIANCE': 'mean',  # Updated column name
                 'NAME': 'count'
             }).reset_index()
             
@@ -707,7 +972,7 @@ def owner_analysis_page(vn):
             fig = px.line(
                 price_stats, 
                 x='PRICE_LEVEL', 
-                y=['RATING', 'SENTIMENT_FOOD', 'SENTIMENT_SERVICE', 'SENTIMENT_AMBIANCE'],
+                y=['RATING', 'SENTIMENT_SCORES_FOOD', 'SENTIMENT_SCORES_SERVICE', 'SENTIMENT_SCORES_AMBIANCE'],  # Updated column names
                 title="Rating Comparison by Price Range",
                 labels={'PRICE_LEVEL': 'Price Range', 'value': 'Rating', 'variable': 'Rating Category'},
                 markers=True
@@ -748,6 +1013,10 @@ def owner_analysis_page(vn):
         Use this chat interface to ask about trends, rating analysis, or get strategic recommendations.
         """
     )
+    
+    # Ensure owner_chat exists in session_state
+    if "owner_chat" not in st.session_state:
+        st.session_state.owner_chat = []
     
     # Display chat history
     for msg in st.session_state.owner_chat:
@@ -815,7 +1084,6 @@ Consider creating a "Manager's Picks" section on your menu to highlight these pr
                 
                 # Add response to chat history
                 st.session_state.owner_chat.append({"role": "assistant", "content": response})
-
 # Main function
 def main():
     # Initialize Vanna and connect to Snowflake
