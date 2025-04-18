@@ -1,89 +1,213 @@
-# README.md
+# RAG Pipeline with Airflow for NVIDIA Quarterly Reports
 
-## **SentimentSift**
+## Access the Services
 
-Codelab URL: https://damg-7245.github.io/SentimentSift-AI-Powered-Review-Analysis-Platform/#0
+- **Codelab:** [https://damg-7245.github.io/SentimentSift-AI-Powered-Review-Analysis-Platform/#0]
+- **Streamlit UI:** [https://streamlit-ui-362196063135.us-central1.run.app/ ]
 
-### **Introduction**
-SentimentSift is a data-driven tool designed to transform unstructured customer feedback into actionable insights for the restaurant industry. By consolidating reviews and ratings from multiple platforms, the tool generates a normalized rating system based on three critical aspects: **Food**, **Service**, and **Ambiance**. 
-
-Additionally, SentimentSift integrates an advanced chatbot powered by **Retrieval-Augmented Generation (RAG)** and **Large Language Models (LLMs)** to provide precise, context-aware responses to user queries. This project aims to empower restaurant owners, customers, and market researchers with unbiased insights and interactive tools for better decision-making.
 
 ---
 
-## **Overview**
+## Project Overview
 
-### **Key Features**
-1. **Sentiment Analysis**: Aspect-based sentiment scoring for food, service, and ambiance using PyABSA.
-2. **Theme Extraction**: Identification of recurring themes in reviews with BERTopic.
-3. **Normalized Ratings**: Consolidated scores visualized on a scale of 10/100.
-4. **Interactive UI**: A Streamlit-based interface for querying trends and visualizing insights.
-5. **Chatbot Integration**:
-   - RAG-powered chatbot for advanced restaurant-specific queries.
-   - Context-aware responses using LLMs (e.g., OpenAI GPT-4).
-6. **Actionable Reports**: Tiered summary reports highlighting trends in customer feedback.
+This project implements an end-to-end data pipeline and AI system for analyzing Boston café data, providing rich insights through sentiment analysis, topic modeling, and AI-powered interfaces.
+
+![Architecture](WorkFlow.jpg)
+---
+
+## Features
+
+- Processes and analyzes café and review data
+- Stores structured data in Snowflake for analytics
+- Creates vector embeddings of reviews in Pinecone
+- Provides AI-powered interfaces through RAG, chatbot, and SQL agents
+- Enables users to explore data through natural language queries
+- AI-generated review summaries
+
 
 ---
 
-### **System Architecture**
+## Tech Stack
 
-![Alt Text](WorkFlow.jpg)
+- Python 3.8+
+- Docker and Docker Compose
+- Airflow (ETL orchestration)
+- Snowflake (cloud data warehouse)
+- Pinecone (vector database)
+- Streamlit (user interface)
+- LangChain & OpenAI GPT-4 (RAG-powered chatbot integration)
+- Amazon S3 (data storage)
+- PyABSA (aspect-based sentiment analysis)
+- BERTopic (topic modeling)
+- Gemini API
 
-```plaintext
-1. Data Ingestion:
-   - Collect structured (restaurant details) and unstructured (reviews) data via APIs (Google, Yelp, Twitter).
+---
 
-2. Data Preprocessing:
-   - Normalize ratings across platforms; clean text; add metadata.
+## Getting Started
 
-3. Data Storage:
-   - Store raw JSON files in Amazon S3; stage preprocessed data in Snowflake.
+### Cloning the Repository
 
-4. Sentiment Analysis & Theme Extraction:
-   - Use PyABSA for aspect-based scoring; feed labeled text into BERTopic.
+```bash
+git clone https://github.com/DAMG-7245/SentimentSift-AI-Powered-Review-Analysis-Platform.git
 
-5. Vector Embedding Storage:
-   - Store embeddings with metadata in Pinecone.
+```
 
-6. Chatbot Integration:
-   - Use LangChain & GPT-4 to build a RAG-powered chatbot for advanced queries.
+### Creating and Configuring .env File
 
-7. Visualization & Querying:
-   - Develop Streamlit UI for querying trends and visualizing insights.
+- Create `.env` files in the `airflow/tasks` and `api` directories.
+- Add your API keys and database credentials:
+
+  ```
+  SNOWFLAKE_ACCOUNT=
+  SNOWFLAKE_USER= 
+  SNOWFLAKE_PASSWORD=
+  SNOWFLAKE_ROLE=
+  SNOWFLAKE_WAREHOUSE=
+  SNOWFLAKE_DATABASE=
+  SNOWFLAKE_SCHEMA=
+  PINECONE_API_KEY=
+  PINECONE_ENVIRONMENT=
+  GEMINI_API_KEY=
+  PINECONE_INDEX=
+  ```
+
+### Installing Dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+
+### Running the Application
+
+```bash
+docker-compose up -d
 ```
 
 ---
 
-### **Data Sources**
+## Folder Structure
 
-#### **Unstructured Data**
-- **Google API**: Reviews and ratings from Google.
-- **Yelp API**: Detailed reviews and metadata about restaurants.
-- **Twitter API**: Social media analytics for real-time mentions.
+```
+│   .gitignore
+│   codelab.md
+│   docker-compose.yaml
+│   Dockerfile
+│   readme.md
+│   requirements.txt
+│   WorkFlow.jpg
+│   workflow.md
+│
+├───.vscode
+│       launch.json
+│
+├───airflow
+│   │   requirements.txt
+│   │
+│   ├───dags
+│   │       cafe_pipeline_dag.py
+│   │
+│   └───tasks
+│           .env
+│           data_fetch.py
+│           data_process.py
+│           merge.py
+│           sentiment_analysis.py
+│           setup_snowflake.sql
+│           snowflake_sync.py
+│           theme_analysis.py
+│           __init__.py
+│
+├───api
+│       .env
+│       chatbot_agent.py
+│       main.py
+│       py_setup.py
+│       rag_agent.py
+│       sql_agent.py
+│       __init__.py
+│
+├───boston_cafes_data
+│       boston_cafes.json
+│       reviews.json
+│
+├───data
+│   │   integrated_cafes.json
+│   │
+│   └───merge
+├───docs
+│   │   codelab.json
+│   │   index.html
+│   │
+│   └───img
+│           4f50ee79a0d3433f.jpg
+│
+├───frontend
+│       chroma.sqlite3
+│       package.json
+│       test_app.py
+│       vanna_helper.py
+│
+└───img
+        review.jpg
+        sentimentsift.png
+```
 
-#### **Structured Data**
-- Restaurant details such as name, location, price range, cuisine type, and operating hours.
 
 ---
 
-### **Tools and Technologies**
-1. **PyABSA**: For aspect-based sentiment analysis.
-2. **BERTopic**: For extracting recurring themes from customer reviews.
-3. **Pinecone**: Vector database for storing embeddings with metadata.
-4. **Snowflake**: Cloud-based data warehouse for preprocessing and validation.
-5. **Streamlit**: Framework for building an interactive user interface.
-6. **LangChain & OpenAI GPT-4**: For RAG-powered chatbot integration.
-7. **Amazon S3**: Storage for raw JSON files and processed datasets.
+## How It Works
+
+The Boston Cafés Data & AI System integrates traditional ETL processes with modern AI capabilities, creating a comprehensive solution that:
+
+1. Processes and analyzes café and review data
+2. Stores structured data in Snowflake for analytics
+3. Creates vector embeddings of reviews in Pinecone
+4. Provides AI-powered interfaces through RAG, chatbot, and SQL agents
+
+The system enables users to explore Boston café data through natural language queries, get AI-generated review summaries, and perform advanced analytics.
+
+---
+
+## Usage
+
+### Running the Pipeline
+
+1. Access the Airflow UI at `[ ]`
+2. Trigger the `cafe_pipeline_dag` DAG to start the ETL process
+3. Monitor the pipeline execution through the Airflow UI
+
+### Using the AI Interfaces
+
+#### Chatbot Interface
+
+
 
 ---
 
 
-## **👨‍💻 Authors**
-* Sicheng Bao (@Jellysillyfish13)
-* Yung Rou Ko (@KoYungRou)
-* Anuj Rajendraprasad Nene (@Neneanuj)
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature-name`
+3. Commit your changes: `git commit -m 'Add some feature'`
+4. Push to the branch: `git push origin feature-name`
+5. Submit a pull request
 
 ---
 
-## **📞 Contact**
+
+
+## Authors
+
+- Sicheng Bao (@Jellysillyfish13)
+- Yung Rou Ko (@KoYungRou)
+- Anuj Rajendraprasad Nene (@Neneanuj)
+
+---
+
+## Contact
+
 For questions, reach out via Big Data Course or open an issue on GitHub.
+
+---
