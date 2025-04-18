@@ -48,20 +48,18 @@ async def natural_language_query(request: QueryRequest):
         if query_result["results"] and len(query_result["results"]) > 0:
             for restaurant in query_result["results"]:
                 # 如果資料庫中沒有經緯度，可以使用一個模擬的方法生成
-                if "latitude" not in restaurant or "longitude" not in restaurant:
+                if "LATITUDE" not in restaurant or "LONGITUDE" not in restaurant:
                     # 這裡只是演示，實際應用中應該從資料庫獲取真實資料
-                    if "city" in restaurant:
-                        # 根據城市生成模擬經緯度（實際應用中應從資料庫獲取）
-                        if restaurant["city"] == "Boston":
-                            base_lat, base_lng = 42.3601, -71.0589
-                        elif restaurant["city"] == "New York":
-                            base_lat, base_lng = 40.7128, -74.0060
-                        else:
-                            base_lat, base_lng = 37.7749, -122.4194
-                        
-                        # 添加一些小的隨機偏移以區分餐廳位置
-                        restaurant["latitude"] = base_lat + (np.random.random() - 0.5) * 0.05
-                        restaurant["longitude"] = base_lng + (np.random.random() - 0.5) * 0.05
+                    if "FULL_ADDRESS" in restaurant and "Boston" in restaurant["FULL_ADDRESS"]:
+                        base_lat, base_lng = 42.3601, -71.0589
+                    elif "FULL_ADDRESS" in restaurant and "New York" in restaurant["FULL_ADDRESS"]:
+                        base_lat, base_lng = 40.7128, -74.0060
+                    else:
+                        base_lat, base_lng = 37.7749, -122.4194
+                    
+                    # 添加一些小的隨機偏移以區分餐廳位置
+                    restaurant["LATITUDE"] = base_lat + (np.random.random() - 0.5) * 0.05
+                    restaurant["LONGITUDE"] = base_lng + (np.random.random() - 0.5) * 0.05
         
         return query_result
     
@@ -83,21 +81,20 @@ async def search_restaurants(
         # 構建 SQL 查詢
         query = """
         SELECT 
-            r.business_id, 
-            r.name, 
-            r.address, 
-            r.city, 
-            r.stars, 
-            r.overall_score,
-            r.food_score, 
-            r.service_score, 
-            r.ambiance_score,
-            r.latitude,
-            r.longitude,
-            r.price_range,
-            r.categories
+            c.BUSINESS_ID, 
+            c.NAME, 
+            c.FULL_ADDRESS as address, 
+            c.LATITUDE,
+            c.LONGITUDE,
+            c.RATING as stars, 
+            c.SENTIMENT_FOOD as food_score, 
+            c.SENTIMENT_SERVICE as service_score, 
+            c.SENTIMENT_AMBIANCE as ambiance_score,
+            (c.SENTIMENT_FOOD + c.SENTIMENT_SERVICE + c.SENTIMENT_AMBIANCE)/3 as overall_score,
+            c.PRICE_LEVEL as price_range,
+            c.TYPE as categories
         FROM 
-            restaurants r
+            COFFEE_SHOPS c
         WHERE 
             1=1
         """
@@ -105,74 +102,40 @@ async def search_restaurants(
         # 添加過濾條件
         params = {}
         if city:
-            query += " AND r.city = :city"
-            params["city"] = city
+            query += " AND c.FULL_ADDRESS LIKE :city"
+            params["city"] = f"%{city}%"
         
         if min_score:
-            query += " AND r.stars >= :min_score"
+            query += " AND c.RATING >= :min_score"
             params["min_score"] = min_score
         
         # 添加關鍵字搜索
         if q and q.strip():
             query += """ 
             AND (
-                r.name ILIKE :search_term 
-                OR r.categories ILIKE :search_term
-                OR EXISTS (
-                    SELECT 1 FROM reviews v 
-                    WHERE v.business_id = r.business_id 
-                    AND v.text ILIKE :search_term
-                )
+                c.NAME ILIKE :search_term 
+                OR c.TYPE ILIKE :search_term
+                OR c.TOPIC_KEYWORDS ILIKE :search_term
             )
             """
             params["search_term"] = f"%{q}%"
         
         # 添加排序和限制
-        query += " ORDER BY r.overall_score DESC LIMIT :limit"
+        query += " ORDER BY (c.SENTIMENT_FOOD + c.SENTIMENT_SERVICE + c.SENTIMENT_AMBIANCE)/3 DESC LIMIT :limit"
         params["limit"] = limit
         
         # 執行查詢
         results, _ = sql_agent.execute_query(query, params)
         
-        # 如果需要包含評論
-        if include_reviews:
-            for restaurant in results:
-                # 獲取餐廳的評論
-                review_query = """
-                SELECT 
-                    r.review_id, 
-                    r.user_id, 
-                    r.user_name,
-                    r.stars, 
-                    r.text, 
-                    r.date
-                FROM 
-                    reviews r
-                WHERE 
-                    r.business_id = :business_id
-                ORDER BY 
-                    r.date DESC
-                LIMIT 5
-                """
-                
-                review_params = {"business_id": restaurant["business_id"]}
-                reviews, _ = sql_agent.execute_query(review_query, review_params)
-                restaurant["reviews"] = reviews
-        
-        # 生成模擬經緯度（如果資料庫中沒有）
+        # 提取城市信息從地址
         for restaurant in results:
-            if "latitude" not in restaurant or "longitude" not in restaurant:
-                # 根據城市生成模擬經緯度
-                if "city" in restaurant:
-                    if restaurant["city"] == "Boston":
-                        base_lat, base_lng = 42.3601, -71.0589
-                    elif restaurant["city"] == "New York":
-                        base_lat, base_lng = 40.7128, -74.0060
-                    else:
-                        base_lat, base_lng = 37.7749, -122.4194
-                    
-                    restaurant["latitude"] = base_lat + (np.random.random() - 0.5) * 0.05
-                    restaurant["longitude"] = base_lng + (np.random.random() - 0.5) * 0.05
+            if "address" in restaurant:
+                # 嘗試從地址中提取城市
+                address_parts = restaurant["address"].split(',')
+                if len(address_parts) > 1:
+                    restaurant["city"] = address_parts[-2].strip()
+                else:
+                    restaurant["city"] = "Unknown"
         
         return results
     
@@ -193,21 +156,20 @@ async def get_top_restaurants(
         # 構建 SQL 查詢
         query = """
         SELECT 
-            r.business_id, 
-            r.name, 
-            r.address, 
-            r.city, 
-            r.stars, 
-            r.overall_score,
-            r.food_score, 
-            r.service_score, 
-            r.ambiance_score,
-            r.latitude,
-            r.longitude,
-            r.price_range,
-            r.categories
+            c.BUSINESS_ID, 
+            c.NAME, 
+            c.FULL_ADDRESS as address, 
+            c.LATITUDE,
+            c.LONGITUDE,
+            c.RATING as stars, 
+            c.SENTIMENT_FOOD as food_score, 
+            c.SENTIMENT_SERVICE as service_score, 
+            c.SENTIMENT_AMBIANCE as ambiance_score,
+            (c.SENTIMENT_FOOD + c.SENTIMENT_SERVICE + c.SENTIMENT_AMBIANCE)/3 as overall_score,
+            c.PRICE_LEVEL as price_range,
+            c.TYPE as categories
         FROM 
-            restaurants r
+            COFFEE_SHOPS c
         WHERE 
             1=1
         """
@@ -215,38 +177,33 @@ async def get_top_restaurants(
         # 添加過濾條件
         params = {}
         if city:
-            query += " AND r.city = :city"
-            params["city"] = city
+            query += " AND c.FULL_ADDRESS LIKE :city"
+            params["city"] = f"%{city}%"
         
         if min_score:
-            query += " AND r.stars >= :min_score"
+            query += " AND c.RATING >= :min_score"
             params["min_score"] = min_score
         
         if category:
-            query += " AND r.categories ILIKE :category"
+            query += " AND c.TYPE ILIKE :category"
             params["category"] = f"%{category}%"
         
         # 添加排序和限制
-        query += " ORDER BY r.overall_score DESC LIMIT :limit"
+        query += " ORDER BY (c.SENTIMENT_FOOD + c.SENTIMENT_SERVICE + c.SENTIMENT_AMBIANCE)/3 DESC LIMIT :limit"
         params["limit"] = limit
         
         # 執行查詢
         results, _ = sql_agent.execute_query(query, params)
         
-        # 生成模擬經緯度（如果資料庫中沒有）
+        # 提取城市信息從地址
         for restaurant in results:
-            if "latitude" not in restaurant or "longitude" not in restaurant:
-                # 根據城市生成模擬經緯度
-                if "city" in restaurant:
-                    if restaurant["city"] == "Boston":
-                        base_lat, base_lng = 42.3601, -71.0589
-                    elif restaurant["city"] == "New York":
-                        base_lat, base_lng = 40.7128, -74.0060
-                    else:
-                        base_lat, base_lng = 37.7749, -122.4194
-                    
-                    restaurant["latitude"] = base_lat + (np.random.random() - 0.5) * 0.05
-                    restaurant["longitude"] = base_lng + (np.random.random() - 0.5) * 0.05
+            if "address" in restaurant:
+                # 嘗試從地址中提取城市
+                address_parts = restaurant["address"].split(',')
+                if len(address_parts) > 1:
+                    restaurant["city"] = address_parts[-2].strip()
+                else:
+                    restaurant["city"] = "Unknown"
         
         return results
     
@@ -263,18 +220,18 @@ async def get_overall_stats(city: Optional[str] = None):
         query = """
         SELECT 
             COUNT(*) as total_restaurants,
-            AVG(stars) as avg_rating,
-            AVG(food_score) as avg_food_score,
-            AVG(service_score) as avg_service_score,
-            AVG(ambiance_score) as avg_ambiance_score
+            AVG(RATING) as avg_rating,
+            AVG(SENTIMENT_FOOD) as avg_food_score,
+            AVG(SENTIMENT_SERVICE) as avg_service_score,
+            AVG(SENTIMENT_AMBIANCE) as avg_ambiance_score
         FROM 
-            restaurants
+            COFFEE_SHOPS
         """
         
         params = {}
         if city:
-            query += " WHERE city = :city"
-            params["city"] = city
+            query += " WHERE FULL_ADDRESS LIKE :city"
+            params["city"] = f"%{city}%"
         
         # 執行查詢
         results, _ = sql_agent.execute_query(query, params)
@@ -288,13 +245,13 @@ async def get_overall_stats(city: Optional[str] = None):
                 "avg_ambiance_score": 0
             }
         
-        # 城市分布
+        # 城市分布（從地址中提取）
         city_query = """
         SELECT 
-            city, 
+            REGEXP_SUBSTR(FULL_ADDRESS, '[^,]+', 1, 2) as city, 
             COUNT(*) as count
         FROM 
-            restaurants
+            COFFEE_SHOPS
         GROUP BY 
             city
         ORDER BY 
@@ -307,13 +264,12 @@ async def get_overall_stats(city: Optional[str] = None):
         # 分類分布
         category_query = """
         SELECT 
-            TRIM(c.category) as category, 
+            TYPE as category, 
             COUNT(*) as count
         FROM 
-            restaurants r,
-            LATERAL SPLIT_TO_TABLE(r.categories, ',') c(category)
+            COFFEE_SHOPS
         GROUP BY 
-            TRIM(c.category)
+            TYPE
         ORDER BY 
             count DESC
         LIMIT 10
@@ -340,16 +296,16 @@ async def get_rating_distribution(city: Optional[str] = None):
         # 構建 SQL 查詢
         query = """
         SELECT 
-            FLOOR(stars * 2) / 2 as rating_bin,
+            FLOOR(RATING * 2) / 2 as rating_bin,
             COUNT(*) as count
         FROM 
-            restaurants
+            COFFEE_SHOPS
         """
         
         params = {}
         if city:
-            query += " WHERE city = :city"
-            params["city"] = city
+            query += " WHERE FULL_ADDRESS LIKE :city"
+            params["city"] = f"%{city}%"
         
         query += """
         GROUP BY 
@@ -375,26 +331,26 @@ async def get_score_comparison(city: Optional[str] = None):
         # 構建 SQL 查詢
         query = """
         SELECT 
-            AVG(food_score) as avg_food_score,
-            AVG(service_score) as avg_service_score,
-            AVG(ambiance_score) as avg_ambiance_score,
-            STDDEV(food_score) as std_food_score,
-            STDDEV(service_score) as std_service_score,
-            STDDEV(ambiance_score) as std_ambiance_score,
-            MIN(food_score) as min_food_score,
-            MIN(service_score) as min_service_score,
-            MIN(ambiance_score) as min_ambiance_score,
-            MAX(food_score) as max_food_score,
-            MAX(service_score) as max_service_score,
-            MAX(ambiance_score) as max_ambiance_score
+            AVG(SENTIMENT_FOOD) as avg_food_score,
+            AVG(SENTIMENT_SERVICE) as avg_service_score,
+            AVG(SENTIMENT_AMBIANCE) as avg_ambiance_score,
+            STDDEV(SENTIMENT_FOOD) as std_food_score,
+            STDDEV(SENTIMENT_SERVICE) as std_service_score,
+            STDDEV(SENTIMENT_AMBIANCE) as std_ambiance_score,
+            MIN(SENTIMENT_FOOD) as min_food_score,
+            MIN(SENTIMENT_SERVICE) as min_service_score,
+            MIN(SENTIMENT_AMBIANCE) as min_ambiance_score,
+            MAX(SENTIMENT_FOOD) as max_food_score,
+            MAX(SENTIMENT_SERVICE) as max_service_score,
+            MAX(SENTIMENT_AMBIANCE) as max_ambiance_score
         FROM 
-            restaurants
+            COFFEE_SHOPS
         """
         
         params = {}
         if city:
-            query += " WHERE city = :city"
-            params["city"] = city
+            query += " WHERE FULL_ADDRESS LIKE :city"
+            params["city"] = f"%{city}%"
         
         # 執行查詢
         results, _ = sql_agent.execute_query(query, params)
@@ -464,36 +420,35 @@ async def get_top_by_category(
         # 構建 SQL 查詢
         query = """
         SELECT 
-            r.business_id, 
-            r.name, 
-            r.address, 
-            r.city, 
-            r.stars, 
-            r.overall_score,
-            r.food_score, 
-            r.service_score, 
-            r.ambiance_score
+            c.BUSINESS_ID, 
+            c.NAME, 
+            c.FULL_ADDRESS as address, 
+            c.RATING as stars,
+            c.SENTIMENT_FOOD as food_score, 
+            c.SENTIMENT_SERVICE as service_score, 
+            c.SENTIMENT_AMBIANCE as ambiance_score,
+            (c.SENTIMENT_FOOD + c.SENTIMENT_SERVICE + c.SENTIMENT_AMBIANCE)/3 as overall_score
         FROM 
-            restaurants r
+            COFFEE_SHOPS c
         WHERE 
-            r.categories ILIKE :category
+            c.TYPE ILIKE :category
         """
         
         params = {"category": f"%{category}%"}
         
         if city:
-            query += " AND r.city = :city"
-            params["city"] = city
+            query += " AND c.FULL_ADDRESS LIKE :city"
+            params["city"] = f"%{city}%"
         
         # 依評分排序
         if category.lower() in ["food", "restaurant", "cafe", "bakery"]:
-            query += " ORDER BY r.food_score DESC"
+            query += " ORDER BY c.SENTIMENT_FOOD DESC"
         elif category.lower() in ["service", "hospitality"]:
-            query += " ORDER BY r.service_score DESC"
+            query += " ORDER BY c.SENTIMENT_SERVICE DESC"
         elif category.lower() in ["ambiance", "atmosphere", "environment"]:
-            query += " ORDER BY r.ambiance_score DESC"
+            query += " ORDER BY c.SENTIMENT_AMBIANCE DESC"
         else:
-            query += " ORDER BY r.overall_score DESC"
+            query += " ORDER BY (c.SENTIMENT_FOOD + c.SENTIMENT_SERVICE + c.SENTIMENT_AMBIANCE)/3 DESC"
         
         query += " LIMIT :limit"
         params["limit"] = limit
@@ -505,7 +460,20 @@ async def get_top_by_category(
     
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"獲取頂級類別錯誤: {str(e)}")
-
+    
+@app.post("/chat")
+async def chat_with_bot(request: QueryRequest):
+    """
+    與聊天機器人進行對話
+    """
+    try:
+        # 使用聊天機器人代理處理問題
+        response = await chatbot_agent.process_restaurant_query(request.question)
+        return {"response": response}
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"處理聊天請求時出錯: {str(e)}")
+    
 @app.get("/stats/city_comparison")
 async def get_city_comparison():
     """
@@ -515,14 +483,14 @@ async def get_city_comparison():
         # 構建 SQL 查詢
         query = """
         SELECT 
-            city,
+            REGEXP_SUBSTR(FULL_ADDRESS, '[^,]+', 1, 2) as city,
             COUNT(*) as restaurant_count,
-            AVG(stars) as avg_rating,
-            AVG(food_score) as avg_food_score,
-            AVG(service_score) as avg_service_score,
-            AVG(ambiance_score) as avg_ambiance_score
+            AVG(RATING) as avg_rating,
+            AVG(SENTIMENT_FOOD) as avg_food_score,
+            AVG(SENTIMENT_SERVICE) as avg_service_score,
+            AVG(SENTIMENT_AMBIANCE) as avg_ambiance_score
         FROM 
-            restaurants
+            COFFEE_SHOPS
         GROUP BY 
             city
         ORDER BY 

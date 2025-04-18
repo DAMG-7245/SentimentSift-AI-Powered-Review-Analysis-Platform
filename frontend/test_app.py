@@ -1,662 +1,853 @@
+# test_app.py - Integrated version, combining original functionality and new interface design
 import streamlit as st
-import requests
 import pandas as pd
-import json
-import altair as alt
 import plotly.express as px
-import plotly.graph_objects as go
-from PIL import Image
-import io
-import base64
-import re
+import os
+import time
+import random
+from dotenv import load_dotenv
+from vanna.chromadb import ChromaDB_VectorStore
+from vanna.google import GoogleGeminiChat
 
+# Load environment variables
+load_dotenv()
+
+# Get configuration
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-pro")
+SNOWFLAKE_ACCOUNT = os.getenv("SNOWFLAKE_ACCOUNT")
+SNOWFLAKE_USER = os.getenv("SNOWFLAKE_USER")
+SNOWFLAKE_PASSWORD = os.getenv("SNOWFLAKE_PASSWORD")
+SNOWFLAKE_DATABASE = "FINAL_DB"
+SNOWFLAKE_SCHEMA = "FINAL"
+SNOWFLAKE_WAREHOUSE = os.getenv("SNOWFLAKE_WAREHOUSE", "COMPUTE_WH")  # Using default value
+
+# Set page configuration
 st.set_page_config(
-    page_title="SentimentSift Restaurant Analysis",
-    page_icon="🍽️",
+    page_title="Boston Coffee Shop Explorer",
+    page_icon="☕",
     layout="wide"
 )
 
-# Custom CSS for better appearance
-st.markdown("""
-<style>
-    .main-header {
-        font-size: 2.5rem;
-        color: #FF5A5F;
-        margin-bottom: 0.5rem;
-    }
-    .sub-header {
-        font-size: 1.5rem;
-        color: #484848;
-        margin-bottom: 1.5rem;
-    }
-    .metric-card {
-        background-color: #f7f7f7;
-        border-radius: 5px;
-        padding: 1rem;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-    }
-    .review-card {
-        background-color: #f9f9f9;
-        border-left: 3px solid #FF5A5F;
-        padding: 1rem;
-        margin-bottom: 0.5rem;
-        border-radius: 0 5px 5px 0;
-    }
-    .footer {
-        margin-top: 3rem;
-        text-align: center;
-        color: #888;
-    }
-</style>
-""", unsafe_allow_html=True)
+# Initialize session state
+if 'selected_shop' not in st.session_state:
+    st.session_state.selected_shop = None
 
-# API endpoint configuration
-API_URL = "http://localhost:8000"
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = []
 
-# Header with logo
-col1, col2 = st.columns([1, 5])
-with col1:
-    try:
-        # Try to load the logo if available
-        logo = Image.open("img/sentimentsift.png")
-        st.image(logo, width=100)
-    except:
-        # If logo not found, display an emoji instead
-        st.markdown("# 🍽️")
+if "owner_chat" not in st.session_state:
+    st.session_state.owner_chat = []
+
+# Custom Vanna class
+class BostonCoffeeVanna(ChromaDB_VectorStore, GoogleGeminiChat):
+    def __init__(self):
+        # Initialize base classes
+        ChromaDB_VectorStore.__init__(self)
+        GoogleGeminiChat.__init__(self, config={
+            'api_key': GEMINI_API_KEY,
+            'model': GEMINI_MODEL
+        })
         
-with col2:
-    st.markdown('<div class="main-header">SentimentSift</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sub-header">AI-Powered Restaurant Review Analysis</div>', unsafe_allow_html=True)
+        # Connect to Snowflake - this is a key step
+        self.connect_to_snowflake(
+            account=SNOWFLAKE_ACCOUNT,
+            username=SNOWFLAKE_USER,
+            password=SNOWFLAKE_PASSWORD,
+            database=SNOWFLAKE_DATABASE,
+            schema=SNOWFLAKE_SCHEMA,
+            warehouse=SNOWFLAKE_WAREHOUSE
+        )
+        
+        # Add documentation
+        self._add_documentation()
+        
+        # Add example questions
+        self._add_example_questions()
+    
+    def _add_documentation(self):
+        """Add database documentation"""
+        self.add_documentation("""
+        The FINAL_DB.FINAL.COFFEE_SHOPS table contains data about coffee shops with the following columns:
+        - BUSINESS_ID: Unique identifier for each coffee shop
+        - NAME: Name of the coffee shop
+        - FULL_ADDRESS: Complete address of the coffee shop
+        - LATITUDE: Latitude coordinate of the coffee shop
+        - LONGITUDE: Longitude coordinate of the coffee shop
+        - RATING: Overall rating of the coffee shop (1-5 scale)
+        - REVIEW_COUNT: Number of reviews received
+        - PHONE_NUMBER: Contact phone number
+        - PRICE_LEVEL: Price category ($, $$, $$$, or $$$$)
+        - TYPE: Type of establishment (e.g., 'Coffee Shop', 'Cafe', etc.)
+        - SENTIMENT_SERVICE: Score for service quality (0-1 scale)
+        - SENTIMENT_SERVICE_TIER: Categorization of service quality (Poor, Average, Good, Excellent)
+        - SENTIMENT_FOOD: Score for food quality (0-1 scale)
+        - SENTIMENT_FOOD_TIER: Categorization of food quality (Poor, Average, Good, Excellent)
+        - SENTIMENT_AMBIANCE: Score for ambiance quality (0-1 scale)
+        - SENTIMENT_AMBIANCE_TIER: Categorization of ambiance quality (Poor, Average, Good, Excellent)
+        - TOPIC_ID: Identifier for topic analysis
+        - TOPIC_COUNT: Number of mentions for this topic
+        - TOPIC_KEYWORDS: Keywords associated with this topic
+        - TOPIC_NAME: Name of the topic identified in reviews
+        - TOPIC_RANK: Ranking of the topic importance
+        - WEBSITE: Website URL of the coffee shop
+        """)
+    
+    def _add_example_questions(self):
+        """Add example questions to train Vanna"""
+        self.add_question_sql(
+            question="What are the coffee shops with the highest food ratings?",
+            sql="""
+            SELECT 
+                NAME, 
+                FULL_ADDRESS, 
+                RATING, 
+                SENTIMENT_FOOD, 
+                SENTIMENT_FOOD_TIER,
+                SENTIMENT_SERVICE,
+                SENTIMENT_SERVICE_TIER,
+                SENTIMENT_AMBIANCE,
+                SENTIMENT_AMBIANCE_TIER,
+                LATITUDE,
+                LONGITUDE,
+                TOPIC_KEYWORDS,
+                TOPIC_NAME,
+                TOPIC_COUNT
+            FROM FINAL_DB.FINAL.COFFEE_SHOPS
+            ORDER BY SENTIMENT_FOOD DESC
+            LIMIT 10;
+            """
+        )
+        
+        self.add_question_sql(
+            question="Which coffee shops have the worst service?",
+            sql="""
+            SELECT 
+                NAME, 
+                FULL_ADDRESS, 
+                RATING, 
+                SENTIMENT_SERVICE, 
+                SENTIMENT_SERVICE_TIER,
+                SENTIMENT_FOOD,
+                SENTIMENT_FOOD_TIER,
+                SENTIMENT_AMBIANCE,
+                SENTIMENT_AMBIANCE_TIER,
+                LATITUDE,
+                LONGITUDE,
+                TOPIC_KEYWORDS,
+                TOPIC_NAME,
+                TOPIC_COUNT
+            FROM FINAL_DB.FINAL.COFFEE_SHOPS
+            ORDER BY SENTIMENT_SERVICE ASC
+            LIMIT 10;
+            """
+        )
+        
+        self.add_question_sql(
+            question="Show me Boston coffee shops with the best ambiance",
+            sql="""
+            SELECT 
+                NAME, 
+                FULL_ADDRESS, 
+                RATING, 
+                SENTIMENT_AMBIANCE, 
+                SENTIMENT_AMBIANCE_TIER,
+                SENTIMENT_FOOD,
+                SENTIMENT_FOOD_TIER,
+                SENTIMENT_SERVICE,
+                SENTIMENT_SERVICE_TIER,
+                LATITUDE,
+                LONGITUDE,
+                TOPIC_KEYWORDS,
+                TOPIC_NAME,
+                TOPIC_COUNT
+            FROM FINAL_DB.FINAL.COFFEE_SHOPS
+            WHERE FULL_ADDRESS LIKE '%Boston%'
+            ORDER BY SENTIMENT_AMBIANCE DESC
+            LIMIT 10;
+            """
+        )
+        
+        self.add_question_sql(
+            question="Which coffee shops have the highest food ratings?",
+            sql="""
+            SELECT 
+                NAME, 
+                FULL_ADDRESS, 
+                RATING, 
+                SENTIMENT_FOOD, 
+                SENTIMENT_FOOD_TIER,
+                SENTIMENT_SERVICE,
+                SENTIMENT_SERVICE_TIER,
+                SENTIMENT_AMBIANCE,
+                SENTIMENT_AMBIANCE_TIER,
+                LATITUDE,
+                LONGITUDE,
+                TOPIC_KEYWORDS,
+                TOPIC_NAME,
+                TOPIC_COUNT
+            FROM FINAL_DB.FINAL.COFFEE_SHOPS
+            ORDER BY SENTIMENT_FOOD DESC
+            LIMIT 10;
+            """
+        )
 
-# Create tabs for different functionality
-tab1, tab2, tab3, tab4 = st.tabs(["Restaurant Search", "Analytics Dashboard", "City Explorer", "About"])
+# Modified display_restaurant_list_safe function to adjust display format
 
-with tab1:
-    st.markdown("### Search for Restaurants with Natural Language")
+def display_restaurant_list_safe(df):
+    """Safely display coffee shop list, handling various possible error conditions, and displaying price and ratings according to new requirements"""
+    # Final safety check
+    if df is None or not isinstance(df, pd.DataFrame) or df.empty:
+        st.info("No coffee shops found matching the criteria.")
+        return
     
-    # Input for natural language query with examples
-    example_queries = [
-        "Find restaurants in Boston with at least 4 stars",
-        "What are the best cafe places in Boston?",
-        "Show me top 5 restaurants in Boston with good service",
-        "Where can I find romantic cafes in Boston?",
-        "List family-friendly restaurants in Boston with 4.5+ stars"
-    ]
+    # Display each coffee shop
+    for i, row in df.iterrows():
+        try:
+            shop_name = row.get('NAME', 'Unknown Shop') if isinstance(row, pd.Series) else 'Unknown Shop'
+            shop_type = row.get('TYPE', 'Coffee Shop') if isinstance(row, pd.Series) else 'Coffee Shop'
+            
+            # Price conversion logic
+            original_price = row.get('PRICE_LEVEL', '$$') if isinstance(row, pd.Series) else '$$'
+            if original_price == '$':
+                display_price = '$1-10'
+            elif original_price == '$$':
+                display_price = '$10-20'
+            else:
+                display_price = original_price
+            
+            with st.expander(f"{shop_name} - {shop_type} ({display_price})"):
+                # Create three columns to display rating tiers - only show Tier, not Score
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    if isinstance(row, pd.Series) and 'SENTIMENT_FOOD_TIER' in row and row['SENTIMENT_FOOD_TIER'] is not None:
+                        food_tier = row['SENTIMENT_FOOD_TIER']
+                        st.markdown(f"**Food**  \n{food_tier}")
+                
+                with col2:
+                    if isinstance(row, pd.Series) and 'SENTIMENT_AMBIANCE_TIER' in row and row['SENTIMENT_AMBIANCE_TIER'] is not None:
+                        ambiance_tier = row['SENTIMENT_AMBIANCE_TIER']
+                        st.markdown(f"**Ambiance**  \n{ambiance_tier}")
+                
+                with col3:
+                    if isinstance(row, pd.Series) and 'SENTIMENT_SERVICE_TIER' in row and row['SENTIMENT_SERVICE_TIER'] is not None:
+                        service_tier = row['SENTIMENT_SERVICE_TIER']
+                        st.markdown(f"**Service**  \n{service_tier}")
+                
+                # Display address
+                if isinstance(row, pd.Series) and 'FULL_ADDRESS' in row and row['FULL_ADDRESS'] is not None:
+                    st.write(f"**Address:** {row['FULL_ADDRESS']}")
+                
+                # Add a view details button
+                if st.button(f"View Details", key=f"view_{i}"):
+                    # Ensure conversion to dictionary doesn't error
+                    if isinstance(row, pd.Series):
+                        st.session_state.selected_shop = row.to_dict()
+                    else:
+                        st.warning("Unable to get shop details.")
+        except Exception as e:
+            st.error(f"Error displaying shop {i}: {str(e)}")
+
+# Modified display_shop_details function to adjust details page display
+def display_shop_details(shop_data):
+    """Display details of the selected coffee shop, including map and ratings"""
+    st.subheader(f"☕ {shop_data['NAME']}")
     
-    selected_example = st.selectbox("Try one of our example queries:", 
-                                   [""] + example_queries)
+    # Basic information
+    st.markdown(f"**Address:** {shop_data['FULL_ADDRESS']}")
+    st.markdown(f"**Rating:** {shop_data['RATING']}⭐")
     
-    if selected_example:
-        query = selected_example
+    # Price conversion logic
+    original_price = shop_data.get('PRICE_LEVEL', '$$') 
+    if original_price == '$':
+        display_price = '$1-10'
+    elif original_price == '$$':
+        display_price = '$10-20'
     else:
-        query = st.text_input("Or type your own query:", "Find cafes in Boston with good food")
+        display_price = original_price
     
-    # Parameters and options
-    col1, col2 = st.columns(2)
-    with col1:
-        show_sql = st.checkbox("Show SQL Query", value=True)
-        show_map = st.checkbox("Show Map View", value=True)
-    with col2:
-        result_limit = st.slider("Result Limit", min_value=5, max_value=50, value=10)
-        endpoint = st.radio("API Endpoint", ["Natural Language (query)", "Filtered Search (search)"])
+    st.markdown(f"**Price Range:** {display_price}")
     
-    # Execute search
-    if st.button("Find Restaurants", type="primary", key="search_button"):
-        with st.spinner("Processing your query..."):
-            try:
-                # Determine which endpoint to use based on selection
-                if endpoint == "Natural Language (query)":
-                    response = requests.post(
-                        f"{API_URL}/query",
-                        json={"question": query}
-                    )
-                else:  # Filtered Search
-                    # Extract parameters from query
-                    city = "Boston"  # Default to Boston
-                    
-                    # Try to extract city from query
-                    city_match = re.search(r"in\s+([a-zA-Z\s]+)(?:\s+with|\s+that|\?|$)", query, re.IGNORECASE)
-                    if city_match:
-                        city = city_match.group(1).strip()
-                    
-                    # Try to extract rating
-                    min_score = 4.0  # Default
-                    rating_match = re.search(r"(\d+\.?\d*)\s*(?:stars?|rating|\+)", query, re.IGNORECASE)
-                    if rating_match:
-                        min_score = float(rating_match.group(1))
-                    
-                    response = requests.get(
-                        f"{API_URL}/search",
-                        params={
-                            "q": query,
-                            "city": city,
-                            "min_score": min_score,
-                            "limit": result_limit
-                        }
-                    )
-                
-                # Process response
-                if response.status_code == 200:
-                    result = response.json()
-                    
-                    # Display generated SQL if applicable and show_sql is enabled
-                    if show_sql and endpoint == "Natural Language (query)" and "sql_query" in result:
-                        st.subheader("Generated SQL Query")
-                        st.code(result['sql_query'], language="sql")
-                    
-                    # Format results based on endpoint
-                    if endpoint == "Natural Language (query)":
-                        if "results" in result and result["results"]:
-                            results_data = result["results"]
-                        else:
-                            st.warning("No results found.")
-                            st.stop()
-                    else:
-                        # For other endpoints, the response is the results list
-                        results_data = result
-                    
-                    if not results_data:
-                        st.warning("No results found for your query.")
-                        st.stop()
-                    
-                    # Create DataFrame from results
-                    df = pd.DataFrame(results_data)
-                    
-                    # Show results section
-                    st.subheader(f"Found {len(df)} Restaurants")
-                    
-                    # Display metrics
-                    col1, col2, col3, col4 = st.columns(4)
-                    with col1:
-                        st.metric("Number of Results", len(df))
-                    
-                    if "stars" in df.columns:
-                        with col2:
-                            avg_rating = round(df["stars"].mean(), 2)
-                            st.metric("Average Rating", f"{avg_rating} ★")
-                    
-                    if "food_score" in df.columns:
-                        with col3:
-                            avg_food = round(df["food_score"].mean(), 2)
-                            st.metric("Avg Food Score", avg_food)
-                    
-                    if "service_score" in df.columns:
-                        with col4:
-                            avg_service = round(df["service_score"].mean(), 2)
-                            st.metric("Avg Service Score", avg_service)
-                    
-                    # Results display options
-                    view_option = st.radio("View as:", ["Table", "Cards"], horizontal=True)
-                    
-                    if view_option == "Table":
-                        # Clean up dataframe for display
-                        display_cols = ["name", "stars", "food_score", "service_score", "ambiance_score", "city", "address"]
-                        display_df = df[display_cols] if all(col in df.columns for col in display_cols) else df
-                        st.dataframe(display_df, use_container_width=True)
-                    else:
-                        # Card display
-                        for i, row in df.iterrows():
-                            col1, col2 = st.columns([3, 2])
-                            with col1:
-                                st.markdown(f"### {row['name']} - {row.get('stars', 'N/A')} ★")
-                                st.markdown(f"**Address:** {row.get('address', 'N/A')}, {row.get('city', 'N/A')}")
-                                if "price_range" in row:
-                                    st.markdown(f"**Price Range:** {'$' * int(row['price_range'])}")
-                            with col2:
-                                # Create radar chart for scores
-                                if all(x in row for x in ["food_score", "service_score", "ambiance_score"]):
-                                    categories = ['Food', 'Service', 'Ambiance']
-                                    values = [row['food_score'], row['service_score'], row['ambiance_score']]
-                                    
-                                    fig = go.Figure()
-                                    fig.add_trace(go.Scatterpolar(
-                                        r=values,
-                                        theta=categories,
-                                        fill='toself',
-                                        name='Scores',
-                                        line_color='#FF5A5F'
-                                    ))
-                                    
-                                    fig.update_layout(
-                                        polar=dict(
-                                            radialaxis=dict(
-                                                visible=True,
-                                                range=[0, 5]
-                                            )
-                                        ),
-                                        showlegend=False,
-                                        height=200,
-                                        margin=dict(l=10, r=10, t=10, b=10)
-                                    )
-                                    st.plotly_chart(fig, use_container_width=True)
-                            
-                            # Display reviews if available
-                            if "reviews" in row and row["reviews"]:
-                                with st.expander("Sample Reviews"):
-                                    for review in row["reviews"][:3]:
-                                        st.markdown(f"""<div class="review-card">
-                                            <div>"{review['text'][:200]}..."</div>
-                                            <div style="text-align: right; font-style: italic;">- {review.get('user_name', 'Anonymous')}</div>
-                                        </div>""", unsafe_allow_html=True)
-                            
-                            st.divider()
-                    
-                    # Display restaurants on a map if coordinates available
-                    if show_map and "latitude" in df.columns and "longitude" in df.columns:
-                        st.subheader("Restaurant Locations")
-                        st.map(df)
-                    
-                    # Score comparison chart if we have enough results
-                    if len(df) > 1 and all(x in df.columns for x in ["food_score", "service_score", "ambiance_score"]):
-                        st.subheader("Restaurant Score Comparison")
-                        
-                        # Prepare data for chart
-                        chart_data = pd.melt(
-                            df[["name", "food_score", "service_score", "ambiance_score"]].head(7),
-                            id_vars=["name"],
-                            value_vars=["food_score", "service_score", "ambiance_score"],
-                            var_name="Score Type",
-                            value_name="Score"
-                        )
-                        
-                        # Replace column names for display
-                        chart_data["Score Type"] = chart_data["Score Type"].replace({
-                            "food_score": "Food", 
-                            "service_score": "Service", 
-                            "ambiance_score": "Ambiance"
-                        })
-                        
-                        # Create grouped bar chart
-                        fig = px.bar(
-                            chart_data, 
-                            x="name", 
-                            y="Score", 
-                            color="Score Type",
-                            barmode="group",
-                            height=400,
-                            color_discrete_sequence=["#FF5A5F", "#00A699", "#FC642D"]
-                        )
-                        
-                        fig.update_layout(
-                            xaxis_title="Restaurant",
-                            yaxis_title="Score (0-5)",
-                            legend_title="Category",
-                            xaxis={'categoryorder':'total descending'}
-                        )
-                        
-                        st.plotly_chart(fig, use_container_width=True)
-                
-                else:
-                    st.error(f"Error: {response.status_code} - {response.text}")
+    # Rating metrics
+    metrics_col1, metrics_col2, metrics_col3 = st.columns(3)
+    
+    with metrics_col1:
+        if 'SENTIMENT_SERVICE' in shop_data and shop_data['SENTIMENT_SERVICE'] is not None:
+            service_score = shop_data['SENTIMENT_SERVICE']
+            if isinstance(service_score, (int, float)):
+                st.metric("Service Rating", f"{service_score:.2f}", 
+                         delta="Higher" if service_score > 0.5 else "Lower")
+        
+        if 'SENTIMENT_SERVICE_TIER' in shop_data and shop_data['SENTIMENT_SERVICE_TIER'] is not None:
+            st.write(f"**Tier:** {shop_data['SENTIMENT_SERVICE_TIER']}")
+    
+    with metrics_col2:
+        if 'SENTIMENT_FOOD' in shop_data and shop_data['SENTIMENT_FOOD'] is not None:
+            food_score = shop_data['SENTIMENT_FOOD']
+            if isinstance(food_score, (int, float)):
+                st.metric("Food Rating", f"{food_score:.2f}", 
+                         delta="Higher" if food_score > 0.5 else "Lower")
+        
+        if 'SENTIMENT_FOOD_TIER' in shop_data and shop_data['SENTIMENT_FOOD_TIER'] is not None:
+            st.write(f"**Tier:** {shop_data['SENTIMENT_FOOD_TIER']}")
+    
+    with metrics_col3:
+        if 'SENTIMENT_AMBIANCE' in shop_data and shop_data['SENTIMENT_AMBIANCE'] is not None:
+            ambiance_score = shop_data['SENTIMENT_AMBIANCE']
+            if isinstance(ambiance_score, (int, float)):
+                st.metric("Ambiance Rating", f"{ambiance_score:.2f}", 
+                         delta="Higher" if ambiance_score > 0.5 else "Lower")
+        
+        if 'SENTIMENT_AMBIANCE_TIER' in shop_data and shop_data['SENTIMENT_AMBIANCE_TIER'] is not None:
+            st.write(f"**Tier:** {shop_data['SENTIMENT_AMBIANCE_TIER']}")
+    
+    # Map view
+    st.subheader("📍 Location")
+    if 'LATITUDE' in shop_data and 'LONGITUDE' in shop_data:
+        lat_val = shop_data["LATITUDE"]
+        lon_val = shop_data["LONGITUDE"]
+        
+        # Ensure latitude and longitude are valid numbers
+        if isinstance(lat_val, (int, float)) and isinstance(lon_val, (int, float)) and lat_val != 0 and lon_val != 0:
+            map_df = pd.DataFrame({
+                "lat": [lat_val],
+                "lon": [lon_val],
+                "name": [shop_data["NAME"]]
+            })
             
-            except Exception as e:
-                st.error(f"An error occurred: {str(e)}")
-                st.info("Make sure your API server is running at " + API_URL)
+            fig = px.scatter_mapbox(
+                map_df, 
+                lat="lat", 
+                lon="lon", 
+                hover_name="name",
+                zoom=15, 
+                height=300,
+                mapbox_style="carto-positron"
+            )
+            fig.update_layout(margin={"r":0,"t":0,"l":0,"b":0})
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info(f"This coffee shop's location information is invalid or incomplete.")
+    else:
+        st.info("This coffee shop has no location information.")
 
-with tab2:
-    st.markdown("### Restaurant Analytics Dashboard")
+# Modified customer_explorer_page function, increasing coffee shop display count
+def customer_explorer_page(vn):
+    """Customer browsing page, displaying coffee shop list and details"""
+    st.header("Boston Coffee Shop Directory")
     
-    # Filters for the dashboard
-    st.markdown("#### Filter Options")
+    # Get all coffee shop data - increase to 200 shops
+    if "all_coffee_shops" not in st.session_state:
+        with st.spinner("Loading data..."):
+            try:
+                query = """
+                SELECT 
+                    NAME, 
+                    FULL_ADDRESS, 
+                    RATING, 
+                    SENTIMENT_SERVICE, 
+                    SENTIMENT_SERVICE_TIER,
+                    SENTIMENT_FOOD,
+                    SENTIMENT_FOOD_TIER,
+                    SENTIMENT_AMBIANCE,
+                    SENTIMENT_AMBIANCE_TIER,
+                    LATITUDE,
+                    LONGITUDE,
+                    TOPIC_KEYWORDS,
+                    TOPIC_NAME,
+                    TOPIC_COUNT,
+                    PRICE_LEVEL,
+                    TYPE
+                FROM FINAL_DB.FINAL.COFFEE_SHOPS
+                WHERE FULL_ADDRESS LIKE '%Boston%'
+                ORDER BY RATING DESC
+                LIMIT 200;
+                """
+                
+                results = vn.run_sql(query)
+                if results is not None and len(results) > 0:  # Check if results exist and are non-empty
+                    st.session_state.all_coffee_shops = pd.DataFrame(results)
+                    st.session_state.filtered_shops = st.session_state.all_coffee_shops.copy()
+                else:
+                    st.error("Unable to fetch coffee shop data.")
+                    return
+            except Exception as e:
+                st.error(f"Error fetching data: {str(e)}")
+                return
     
+    # Set up filters
+    st.subheader("Filter Options")
     col1, col2, col3 = st.columns(3)
+    
     with col1:
-        city_filter = st.selectbox(
-            "City:",
-            ["All Cities", "Boston", "New York", "Chicago", "San Francisco", "Los Angeles"]
-        )
+        min_rating = st.slider("Minimum Rating", 1.0, 5.0, 1.0, 0.5)
+    
     with col2:
-        rating_filter = st.slider(
-            "Minimum Rating:",
-            min_value=1.0,
-            max_value=5.0,
-            value=3.5,
-            step=0.5
-        )
+        if 'TYPE' in st.session_state.all_coffee_shops.columns:
+            shop_types = ["All"] + sorted(st.session_state.all_coffee_shops['TYPE'].dropna().unique().tolist())
+            selected_type = st.selectbox("Shop Type", shop_types)
+        else:
+            selected_type = "All"
+    
     with col3:
-        category_filter = st.multiselect(
-            "Categories:",
-            ["Cafe", "Restaurant", "Bakery", "Bar", "Fast Food"],
-            default=["Cafe", "Restaurant"]
-        )
+        # Modified price options
+        price_levels = ["All", "$1-10", "$10-20"]
+        selected_price = st.selectbox("Price Range", price_levels)
     
-    # Fetch dashboard data
-    if st.button("Generate Dashboard", type="primary", key="dashboard_button"):
-        with st.spinner("Fetching analytics data..."):
-            try:
-                # Get restaurant data from the API
-                city_param = None if city_filter == "All Cities" else city_filter
-                
-                response = requests.get(
-                    f"{API_URL}/restaurants",
-                    params={
-                        "city": city_param,
-                        "min_score": rating_filter,
-                        "limit": 50  # Get more data for analytics
-                    }
-                )
-                
-                if response.status_code == 200:
-                    results = response.json()
-                    if not results:
-                        st.warning("No data available with the selected filters.")
-                        st.stop()
-                    
-                    # Create DataFrame
-                    df = pd.DataFrame(results)
-                    
-                    # Display data summary
-                    st.markdown("### Restaurant Analytics Overview")
-                    
-                    # Summary metrics
-                    col1, col2, col3, col4 = st.columns(4)
-                    with col1:
-                        st.metric("Total Restaurants", len(df))
-                    with col2:
-                        avg_rating = round(df["stars"].mean(), 2) if "stars" in df.columns else "N/A"
-                        st.metric("Average Rating", f"{avg_rating} ★")
-                    with col3:
-                        top_city = df["city"].value_counts().idxmax() if "city" in df.columns else "N/A"
-                        st.metric("Top City", top_city)
-                    with col4:
-                        avg_food = round(df["food_score"].mean(), 2) if "food_score" in df.columns else "N/A"
-                        st.metric("Avg Food Score", avg_food)
-                    
-                    # Create charts
-                    st.markdown("### Score Distribution")
-                    
-                    # Score distribution charts
-                    col1, col2 = st.columns(2)
-                    
-                    with col1:
-                        # Rating distribution histogram
-                        if "stars" in df.columns:
-                            fig = px.histogram(
-                                df, 
-                                x="stars", 
-                                nbins=10,
-                                color_discrete_sequence=["#FF5A5F"],
-                                title="Star Rating Distribution"
-                            )
-                            
-                            fig.update_layout(
-                                xaxis_title="Star Rating",
-                                yaxis_title="Number of Restaurants",
-                                bargap=0.1
-                            )
-                            
-                            st.plotly_chart(fig, use_container_width=True)
-                    
-                    with col2:
-                        # Score category comparison
-                        if all(x in df.columns for x in ["food_score", "service_score", "ambiance_score"]):
-                            df_scores = pd.melt(
-                                df[["food_score", "service_score", "ambiance_score"]],
-                                value_vars=["food_score", "service_score", "ambiance_score"],
-                                var_name="Category",
-                                value_name="Score"
-                            )
-                            
-                            # Convert column names for display
-                            df_scores["Category"] = df_scores["Category"].replace({
-                                "food_score": "Food", 
-                                "service_score": "Service", 
-                                "ambiance_score": "Ambiance"
-                            })
-                            
-                            fig = px.box(
-                                df_scores, 
-                                x="Category", 
-                                y="Score", 
-                                color="Category",
-                                color_discrete_sequence=["#FF5A5F", "#00A699", "#FC642D"],
-                                title="Score Distribution by Category"
-                            )
-                            
-                            fig.update_layout(
-                                showlegend=False,
-                                yaxis_range=[1, 5]
-                            )
-                            
-                            st.plotly_chart(fig, use_container_width=True)
-                    
-                    # Top restaurants section
-                    st.markdown("### Top Rated Restaurants")
-                    
-                    # Sort by overall score
-                    if "overall_score" in df.columns:
-                        top_df = df.sort_values("overall_score", ascending=False).head(10)
-                    else:
-                        top_df = df.sort_values("stars", ascending=False).head(10)
-                    
-                    # Create bar chart for top restaurants
-                    fig = px.bar(
-                        top_df,
-                        x="name",
-                        y="stars" if "stars" in top_df.columns else "overall_score",
-                        color="stars" if "stars" in top_df.columns else "overall_score",
-                        title="Top 10 Restaurants by Rating",
-                        color_continuous_scale=px.colors.sequential.Reds,
-                        height=400
-                    )
-                    
-                    fig.update_layout(
-                        xaxis_title="Restaurant",
-                        yaxis_title="Rating",
-                        xaxis={'categoryorder':'total descending'}
-                    )
-                    
-                    st.plotly_chart(fig, use_container_width=True)
-                    
-                    # Map visualization if we have coordinates
-                    if "latitude" in df.columns and "longitude" in df.columns:
-                        st.markdown("### Restaurant Hotspots")
-                        
-                        fig = px.density_mapbox(
-                            df, 
-                            lat="latitude", 
-                            lon="longitude", 
-                            z="stars" if "stars" in df.columns else "overall_score", 
-                            radius=10,
-                            center=dict(lat=df["latitude"].mean(), lon=df["longitude"].mean()),
-                            zoom=11,
-                            mapbox_style="open-street-map",
-                            title="Restaurant Rating Heatmap"
-                        )
-                        
-                        st.plotly_chart(fig, use_container_width=True)
-                else:
-                    st.error(f"Error fetching data: {response.status_code} - {response.text}")
-            
-            except Exception as e:
-                st.error(f"An error occurred: {str(e)}")
-                st.info("Make sure your API server is running at " + API_URL)
+    # Apply filters
+    filtered_df = st.session_state.all_coffee_shops.copy()
+    
+    # Filter by rating
+    filtered_df = filtered_df[filtered_df['RATING'] >= min_rating]
+    
+    # Filter by type
+    if selected_type != "All" and 'TYPE' in filtered_df.columns:
+        filtered_df = filtered_df[filtered_df['TYPE'] == selected_type]
+    
+    # Filter by price - modified price filtering logic
+    if selected_price != "All" and 'PRICE_LEVEL' in filtered_df.columns:
+        if selected_price == "$1-10":
+            filtered_df = filtered_df[filtered_df['PRICE_LEVEL'] == '$']
+        elif selected_price == "$10-20":
+            filtered_df = filtered_df[filtered_df['PRICE_LEVEL'] == '$$']
+    
+    st.session_state.filtered_shops = filtered_df
+    
+    # Split the page into left and right sections
+    col_list, col_detail = st.columns([3, 3])
+    
+    with col_list:
+        st.subheader(f"Coffee Shop List ({len(filtered_df)} shops)")
+        # Display coffee shop list
+        display_restaurant_list_safe(filtered_df)
+    
+    with col_detail:
+        if st.session_state.selected_shop is not None:
+            # Display details of the selected coffee shop
+            display_shop_details(st.session_state.selected_shop)
+        else:
+            st.info("👈 Please select a coffee shop from the left to view details")
 
-with tab3:
-    st.markdown("### City Explorer")
-    
-    # City selection
-    selected_city = st.selectbox(
-        "Select a city to explore:",
-        ["Boston", "New York", "Chicago", "San Francisco", "Los Angeles"]
+def home_page():
+    """Home page displays welcome information and basic introduction"""
+    st.title("☕ Boston Coffee Shop Explorer")
+    st.write(
+        "Welcome! Use the sidebar to navigate between **Coffee Shop Explorer**, **AI Query Assistant**, and **Data Analysis**."
     )
     
-    # Information display
-    if st.button("Explore City", type="primary", key="city_button"):
-        with st.spinner(f"Exploring {selected_city}..."):
-            try:
-                # Fetch city-specific data
-                response = requests.get(
-                    f"{API_URL}/restaurants",
-                    params={
-                        "city": selected_city,
-                        "limit": 50
-                    }
-                )
+    st.markdown("""
+    ### Features:
+    - **Coffee Shop Explorer**: Browse coffee shops in the Boston area, view ratings and reviews
+    - **AI Query Assistant**: Ask questions about coffee shops using natural language
+    - **Data Analysis**: Get statistical analysis of coffee shop ratings and reviews
+    
+    This application uses natural language processing to analyze coffee shop reviews and provide insights based on sentiment analysis.
+    """)
+    
+    # Display some example questions
+    st.subheader("Try these questions:")
+    examples = [
+        "What are the best coffee shops in Boston?",
+        "Which coffee shops have the worst service?",
+        "Which shops offer Italian-style coffee?",
+        "Where are the coffee shops with the highest ambiance ratings?"
+    ]
+    
+    for ex in examples:
+        st.markdown(f"- *{ex}*")
+
+# Fix the boolean judgment part for DataFrame
+
+def ai_query_assistant_page(vn):
+    """AI Query Assistant page, allows users to query using natural language"""
+    st.header("AI Query Assistant")
+    st.write("Ask questions about Boston coffee shops using natural language.")
+    
+    # Split the page into left and right sections
+    chat_col, results_col = st.columns([2, 4])
+    
+    with chat_col:
+        # Chat interface
+        st.subheader("💬 Chat")
+        
+        # Display chat history
+        for message in st.session_state.chat_history:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
+        
+        # Chat input
+        user_question = st.chat_input("Ask a question about coffee shops...", key="chat_input")
+        
+        if user_question:
+            # Add user message to chat history
+            st.session_state.chat_history.append({"role": "user", "content": user_question})
+            
+            # Display user message
+            with st.chat_message("user"):
+                st.markdown(user_question)
+            
+            # Process user query
+            with st.chat_message("assistant"):
+                response_placeholder = st.empty()
                 
-                if response.status_code == 200:
-                    results = response.json()
-                    if not results:
-                        st.warning(f"No data available for {selected_city}.")
-                        st.stop()
-                    
-                    # Create DataFrame
-                    df = pd.DataFrame(results)
-                    
-                    # City overview
-                    st.markdown(f"## Exploring {selected_city}")
-                    
-                    # Summary metrics
-                    col1, col2, col3, col4 = st.columns(4)
-                    with col1:
-                        st.metric("Total Restaurants", len(df))
-                    with col2:
-                        avg_rating = round(df["stars"].mean(), 2) if "stars" in df.columns else "N/A"
-                        st.metric("Average Rating", f"{avg_rating} ★")
-                    with col3:
-                        avg_food = round(df["food_score"].mean(), 2) if "food_score" in df.columns else "N/A"
-                        st.metric("Avg Food Score", avg_food)
-                    with col4:
-                        avg_service = round(df["service_score"].mean(), 2) if "service_score" in df.columns else "N/A"
-                        st.metric("Avg Service Score", avg_service)
-                    
-                    # Top categories chart
-                    st.markdown("### Popular Categories")
-                    
-                    if "categories" in df.columns:
-                        # Extract all categories
-                        all_categories = []
-                        for cats in df["categories"]:
-                            if isinstance(cats, str):
-                                # Split categories and strip whitespace
-                                split_cats = [c.strip() for c in cats.split(",")]
-                                all_categories.extend(split_cats)
+                with st.spinner("Thinking..."):
+                    try:
+                        # Generate SQL
+                        generated_sql = vn.generate_sql(user_question)
                         
-                        # Count occurrences
-                        if all_categories:
-                            category_counts = pd.Series(all_categories).value_counts().head(10)
+                        if generated_sql:
+                            # Execute query
+                            results = vn.run_sql(generated_sql)
                             
-                            # Create horizontal bar chart
-                            fig = px.bar(
-                                x=category_counts.values,
-                                y=category_counts.index,
-                                orientation="h",
-                                color=category_counts.values,
-                                color_continuous_scale=px.colors.sequential.Reds,
-                                title=f"Top Categories in {selected_city}"
-                            )
-                            
-                            fig.update_layout(
-                                xaxis_title="Number of Restaurants",
-                                yaxis_title="Category",
-                                yaxis={'categoryorder':'total ascending'}
-                            )
-                            
-                            st.plotly_chart(fig, use_container_width=True)
-                    
-                    # Map of restaurants if we have coordinates
-                    if "latitude" in df.columns and "longitude" in df.columns:
-                        st.markdown(f"### {selected_city} Restaurant Map")
-                        
-                        # Create scatter mapbox
-                        fig = px.scatter_mapbox(
-                            df,
-                            lat="latitude",
-                            lon="longitude",
-                            color="stars" if "stars" in df.columns else "overall_score",
-                            size="stars" if "stars" in df.columns else "overall_score",
-                            color_continuous_scale=px.colors.sequential.Reds,
-                            size_max=15,
-                            zoom=11,
-                            mapbox_style="open-street-map",
-                            hover_name="name",
-                            hover_data=["address", "stars", "food_score", "service_score"],
-                            title=f"{selected_city} Restaurant Map"
-                        )
-                        
-                        st.plotly_chart(fig, use_container_width=True)
-                    
-                    # Top restaurants in the city
-                    st.markdown(f"### Top Restaurants in {selected_city}")
-                    
-                    # Display top 5 as cards
-                    top_5 = df.sort_values("stars" if "stars" in df.columns else "overall_score", ascending=False).head(5)
-                    
-                    for i, row in top_5.iterrows():
-                        col1, col2 = st.columns([2, 3])
-                        with col1:
-                            st.markdown(f"### {i+1}. {row['name']}")
-                            st.markdown(f"**Rating:** {row.get('stars', 'N/A')} ★")
-                            st.markdown(f"**Address:** {row.get('address', 'N/A')}")
-                            if "price_range" in row:
-                                st.markdown(f"**Price:** {'$' * int(row['price_range'])}")
-                        
-                        with col2:
-                            # Score comparison chart
-                            if all(x in row for x in ["food_score", "service_score", "ambiance_score"]):
-                                categories = ["Food", "Service", "Ambiance"]
-                                scores = [row["food_score"], row["service_score"], row["ambiance_score"]]
+                            # Correctly check results
+                            if results is not None and len(results) > 0:
+                                # Update filtered coffee shop list
+                                df = pd.DataFrame(results)
+                                st.session_state.filtered_shops = df
                                 
-                                fig = px.bar(
-                                    x=categories,
-                                    y=scores,
-                                    color=categories,
-                                    color_discrete_sequence=["#FF5A5F", "#00A699", "#FC642D"],
-                                    height=200
-                                )
-                                
-                                fig.update_layout(
-                                    showlegend=False,
-                                    xaxis_title="",
-                                    yaxis_title="Score",
-                                    yaxis_range=[0, 5],
-                                    margin=dict(l=10, r=10, t=10, b=10)
-                                )
-                                
-                                st.plotly_chart(fig, use_container_width=True)
+                                # Generate response
+                                response = f"I found {len(results)} coffee shops that match your criteria. You can view the results on the right."
+                            else:
+                                # Ensure we don't try to create an empty DataFrame when no results are found
+                                if "filtered_shops" in st.session_state:
+                                    # Create an empty DataFrame with the correct structure
+                                    st.session_state.filtered_shops = pd.DataFrame(columns=["NAME", "FULL_ADDRESS", "RATING"])
+                                response = "Sorry, I couldn't find any coffee shops that match your criteria. Please try a different question."
+                        else:
+                            response = "Sorry, I couldn't understand your question. Please try phrasing it differently."
                         
-                        st.divider()
+                        # Display response
+                        response_placeholder.markdown(response)
+                        
+                        # Add response to chat history
+                        st.session_state.chat_history.append({"role": "assistant", "content": response})
+                    except Exception as e:
+                        response = f"Error processing your question: {str(e)}"
+                        response_placeholder.markdown(response)
+                        st.session_state.chat_history.append({"role": "assistant", "content": response})
+    
+    with results_col:
+        # Results display
+        st.subheader("Query Results")
+        
+        # Modified condition check to ensure DataFrame exists and is not empty
+        if ("filtered_shops" in st.session_state and 
+            st.session_state.filtered_shops is not None and 
+            isinstance(st.session_state.filtered_shops, pd.DataFrame) and 
+            not st.session_state.filtered_shops.empty):
+            
+            # Display map
+            if 'LATITUDE' in st.session_state.filtered_shops.columns and 'LONGITUDE' in st.session_state.filtered_shops.columns:
+                # Create map
+                st.subheader("📍 Location Distribution")
+                map_df = st.session_state.filtered_shops.copy()
+                
+                # Remove any rows with NaN latitude/longitude
+                map_df = map_df.dropna(subset=['LATITUDE', 'LONGITUDE'])
+                
+                # Create map only if there's data after dropping NaNs
+                if not map_df.empty:
+                    fig = px.scatter_mapbox(
+                        map_df, 
+                        lat="LATITUDE", 
+                        lon="LONGITUDE", 
+                        hover_name="NAME",
+                        color="RATING",
+                        color_continuous_scale=px.colors.sequential.Viridis,
+                        zoom=12, 
+                        height=400,
+                        mapbox_style="carto-positron"
+                    )
+                    fig.update_layout(margin={"r":0,"t":0,"l":0,"b":0})
+                    st.plotly_chart(fig, use_container_width=True)
+                else:
+                    st.info("Not enough location data to display a map.")
+            
+            # Display coffee shop list - another safety check
+            display_restaurant_list_safe(st.session_state.filtered_shops)
+        else:
+            st.info("Enter a question on the left to start querying.")
+
+# Fix DataFrame check in owner_analysis_page function
+def owner_analysis_page(vn):
+    """Owner analysis page, providing statistics and insights"""
+    st.header("Coffee Shop Data Analysis")
+    
+    # Get data
+    if "all_coffee_shops" not in st.session_state:
+        with st.spinner("Loading data..."):
+            try:
+                query = """
+                SELECT 
+                    NAME, 
+                    FULL_ADDRESS, 
+                    RATING, 
+                    SENTIMENT_SERVICE, 
+                    SENTIMENT_FOOD,
+                    SENTIMENT_AMBIANCE,
+                    PRICE_LEVEL,
+                    TYPE,
+                    REVIEW_COUNT
+                FROM FINAL_DB.FINAL.COFFEE_SHOPS
+                WHERE FULL_ADDRESS LIKE '%Boston%'
+                """
+                
+                results = vn.run_sql(query)
+                if results is not None and len(results) > 0:  # Explicitly check results
+                    st.session_state.all_coffee_shops = pd.DataFrame(results)
+                else:
+                    st.error("Unable to fetch coffee shop data.")
+                    return
+            except Exception as e:
+                st.error(f"Error fetching data: {str(e)}")
+                return
+
+    # Ensure DataFrame is correctly created
+    if "all_coffee_shops" not in st.session_state or st.session_state.all_coffee_shops is None or st.session_state.all_coffee_shops.empty:
+        st.error("Unable to load coffee shop data.")
+        return
+        
+    
+    # Create tabs
+    tab1, tab2, tab3 = st.tabs(["Rating Overview", "Competitive Analysis", "Trend Analysis"])
+    
+    with tab1:
+        st.subheader("Rating Overview")
+        
+        # Calculate average ratings
+        df = st.session_state.all_coffee_shops
+        
+        # Create rating data
+        sentiment_data = {
+            "Category": ["Overall Rating", "Food Quality", "Service Quality", "Ambiance Experience"],
+            "Average Score": [
+                df["RATING"].mean() / 5,  # Convert 5-star rating to 0-1 range
+                df["SENTIMENT_FOOD"].mean(),
+                df["SENTIMENT_SERVICE"].mean(),
+                df["SENTIMENT_AMBIANCE"].mean()
+            ]
+        }
+        
+        sentiment_df = pd.DataFrame(sentiment_data)
+        
+        # Display rating chart
+        st.bar_chart(sentiment_df.set_index("Category"))
+        
+        # Display highest-rated coffee shops
+        st.subheader("Highest Rated Coffee Shops")
+        top_shops = df.sort_values("RATING", ascending=False).head(5)
+        st.dataframe(top_shops[["NAME", "RATING", "SENTIMENT_FOOD", "SENTIMENT_SERVICE", "SENTIMENT_AMBIANCE"]])
+        
+        # Display most popular coffee shops
+        st.subheader("Most Popular Coffee Shops (Review Count)")
+        popular_shops = df.sort_values("REVIEW_COUNT", ascending=False).head(5)
+        st.dataframe(popular_shops[["NAME", "REVIEW_COUNT", "RATING"]])
+    
+    with tab2:
+        st.subheader("Competitive Analysis")
+        
+        # Group analysis by type
+        if 'TYPE' in df.columns:
+            st.write("Average Ratings by Coffee Shop Type")
+            
+            # Group by type
+            type_stats = df.groupby('TYPE').agg({
+                'RATING': 'mean',
+                'SENTIMENT_FOOD': 'mean',
+                'SENTIMENT_SERVICE': 'mean',
+                'SENTIMENT_AMBIANCE': 'mean',
+                'NAME': 'count'
+            }).reset_index()
+            
+            type_stats = type_stats.rename(columns={'NAME': 'Shop Count'})
+            
+            # Display type statistics
+            st.dataframe(type_stats)
+            
+            # Create visualization
+            fig = px.bar(
+                type_stats, 
+                x='TYPE', 
+                y=['RATING', 'SENTIMENT_FOOD', 'SENTIMENT_SERVICE', 'SENTIMENT_AMBIANCE'],
+                title="Rating Comparison by Coffee Shop Type",
+                labels={'TYPE': 'Type', 'value': 'Rating', 'variable': 'Rating Category'},
+                barmode='group'
+            )
+            st.plotly_chart(fig)
+        
+        # Analysis by price range
+        if 'PRICE_LEVEL' in df.columns:
+            st.write("Rating Comparison by Price Range")
+            
+            # Group by price
+            price_stats = df.groupby('PRICE_LEVEL').agg({
+                'RATING': 'mean',
+                'SENTIMENT_FOOD': 'mean',
+                'SENTIMENT_SERVICE': 'mean',
+                'SENTIMENT_AMBIANCE': 'mean',
+                'NAME': 'count'
+            }).reset_index()
+            
+            price_stats = price_stats.rename(columns={'NAME': 'Shop Count'})
+            
+            # Reorder price levels
+            price_order = ['$', '$$', '$$$', '$$$$']
+            price_stats['PRICE_LEVEL'] = pd.Categorical(
+                price_stats['PRICE_LEVEL'], 
+                categories=price_order,
+                ordered=True
+            )
+            price_stats = price_stats.sort_values('PRICE_LEVEL')
+            
+            # Display price statistics
+            st.dataframe(price_stats)
+            
+            # Create visualization
+            fig = px.line(
+                price_stats, 
+                x='PRICE_LEVEL', 
+                y=['RATING', 'SENTIMENT_FOOD', 'SENTIMENT_SERVICE', 'SENTIMENT_AMBIANCE'],
+                title="Rating Comparison by Price Range",
+                labels={'PRICE_LEVEL': 'Price Range', 'value': 'Rating', 'variable': 'Rating Category'},
+                markers=True
+            )
+            st.plotly_chart(fig)
+    
+    with tab3:
+        st.subheader("Trend Analysis")
+        
+        # Since there's no time data, create simulated data
+        st.info("Note: The following is based on randomly generated simulated trend data for demonstration purposes only.")
+        
+        # Generate simulated trend data
+        months = ["January", "February", "March", "April", "May", "June"]
+        trend_data = {
+            "Month": months,
+            "Overall Rating": [random.uniform(4.0, 4.8) for _ in range(6)],
+            "Food Rating": [random.uniform(4.2, 4.9) for _ in range(6)],
+            "Service Rating": [random.uniform(3.8, 4.7) for _ in range(6)]
+        }
+        
+        trend_df = pd.DataFrame(trend_data)
+        
+        # Display trend chart
+        st.line_chart(trend_df.set_index("Month")[["Overall Rating", "Food Rating", "Service Rating"]])
+        
+        # Display some trend insights
+        st.subheader("Trend Insights")
+        st.success("Service rating has improved by 12% over the past 3 months")
+        st.error("Food rating has slightly decreased last month (-3%)")
+        st.info("Overall rating remains stable with minimal fluctuation")
+    
+    # Strategic insights chat
+    st.markdown("---")
+    st.subheader("💬 Strategic Insights Chat")
+    st.markdown(
+        """
+        Use this chat interface to ask about trends, rating analysis, or get strategic recommendations.
+        """
+    )
+    
+    # Display chat history
+    for msg in st.session_state.owner_chat:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
+    
+    # Chat input
+    owner_input = st.chat_input("Ask about insights, trends, or shop recommendations...", key="owner_chat_input")
+    
+    if owner_input:
+        # Add user message to chat history
+        st.session_state.owner_chat.append({"role": "user", "content": owner_input})
+        
+        with st.chat_message("user"):
+            st.markdown(owner_input)
+        
+        # Generate simulated response
+        with st.chat_message("assistant"):
+            with st.spinner("Analyzing data..."):
+                time.sleep(1)  # Simulate processing time
+                
+                # Simple keyword matching
+                if "improve" in owner_input or "enhancement" in owner_input:
+                    response = """**Improvement Opportunities:**
+                    
+1. **Service Speed**: Reviews show that 15% of customers mention wait time as an issue. Consider optimizing coffee preparation process or adding staff during peak hours.
+
+2. **Food Variety**: There's an increasing customer demand for more plant-based food options. Adding 3-4 vegan options could attract a new customer segment.
+
+3. **Online Presence**: Your social media engagement is 35% below industry average. Implementing a regular schedule of high-quality coffee photos can increase visibility.
+
+Would you like more specific recommendations for any of these areas?"""
+                
+                elif "competition" in owner_input:
+                    response = """**Competitive Analysis:**
+                    
+Your coffee shop outperforms competitors in food quality (+8%) and ambiance (+12%), but slightly underperforms in value for money (-5%).
+
+**Key Differentiators of Top Competitors:**
+- Competitor B offers a membership program with 22% customer participation
+- Competitor A's happy hour specials drive 35% of weekday business
+- Competitor C's outdoor seating area generates 40% additional revenue in summer
+
+Consider implementing a membership program or expanding outdoor seating to compete more effectively."""
+                
+                elif "trend" in owner_input:
+                    response = """**Current Market Trends:**
+                    
+1. **Rising Trend**: Farm-to-table concept showing 28% increase in customer interest
+2. **Declining Trend**: Formal dining experience (-12% year-over-year)
+3. **Emerging Opportunity**: Sustainable packaging positively mentioned in 34% of reviews
+
+Given your existing supplier relationships, your coffee shop is well-positioned to capitalize on the farm-to-table trend."""
                 
                 else:
-                    st.error(f"Error fetching city data: {response.status_code} - {response.text}")
-            
-            except Exception as e:
-                st.error(f"An error occurred: {str(e)}")
-                st.info("Make sure your API server is running at " + API_URL)
+                    response = """**Strategic Insight:**
+                    
+Based on your coffee shop data, I recommend focusing on your signature drinks that receive the highest ratings (Espresso: 4.8/5, Pour-over: 4.9/5).
 
-with tab4:
-    st.markdown("## About SentimentSift")
-    
-    st.markdown("""
-    SentimentSift is an AI-powered restaurant analysis platform that analyzes customer reviews to provide meaningful insights about restaurants.
-    
-    ### How It Works
-    
-    1. **Data Collection**: We gather restaurant reviews from various sources
-    2. **Sentiment Analysis**: Our AI models analyze each review to extract sentiment about food, service, and ambiance
-    3. **Trend Analysis**: We identify trends and patterns in customer feedback
-    4. **Visualization**: Interactive dashboards and visualizations make insights accessible
-    
-    ### Features
-    
-    - Natural language querying for restaurant recommendations
-    - Sentiment analysis for detailed restaurant scoring
-    - Visualization of restaurant data and trends
-    - City exploration with interactive maps
-    - Comparative analysis of restaurants
-    
-    ### Technology Stack
-    
-    - Frontend: Streamlit
-    - Backend: FastAPI
-    - Data Processing: Python (pandas, numpy)
-    - Database: Snowflake
-    - Sentiment Analysis: Custom NLP models
-    """)
+Customer feedback shows these products are driving repeat visits, with 45% of returning customers specifically mentioning them.
 
-# Footer
-st.markdown("""
-<div class="footer">
-    <p>© 2025 SentimentSift · Restaurant Analysis Platform</p>
-</div>
-""", unsafe_allow_html=True)
+Consider creating a "Manager's Picks" section on your menu to highlight these products, and potentially increase their price by 8-10% without affecting demand."""
+                
+                st.markdown(response)
+                
+                # Add response to chat history
+                st.session_state.owner_chat.append({"role": "assistant", "content": response})
+
+# Main function
+def main():
+    # Initialize Vanna and connect to Snowflake
+    @st.cache_resource
+    def get_vanna():
+        try:
+            vn = BostonCoffeeVanna()
+            return vn
+        except Exception as e:
+            st.error(f"Error initializing Vanna: {str(e)}")
+            return None
+    
+    with st.spinner("Connecting to database..."):
+        vn = get_vanna()
+        
+    if vn is None:
+        st.error("Unable to connect to Snowflake. Please check your credentials.")
+        st.stop()
+    
+    # Sidebar navigation
+    st.sidebar.title("Navigation")
+    pages = {
+        "Home": home_page,
+        "Coffee Shop Explorer": lambda: customer_explorer_page(vn),
+        "AI Query Assistant": lambda: ai_query_assistant_page(vn),
+        "Data Analysis": lambda: owner_analysis_page(vn)
+    }
+    
+    selection = st.sidebar.radio("Go to", list(pages.keys()))
+    
+    # Display the selected page
+    pages[selection]()
+
+if __name__ == "__main__":
+    main()
