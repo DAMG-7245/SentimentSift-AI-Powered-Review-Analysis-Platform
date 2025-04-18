@@ -4,7 +4,7 @@
 
 - **Codelab:** [https://damg-7245.github.io/SentimentSift-AI-Powered-Review-Analysis-Platform/#0]
 - **Streamlit UI:** [https://streamlit-ui-362196063135.us-central1.run.app/ ]
-
+- **Demo:** https://youtu.be/3A0pTpScfq8
 
 ---
 
