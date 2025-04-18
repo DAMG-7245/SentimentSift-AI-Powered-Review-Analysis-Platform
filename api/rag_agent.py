@@ -40,25 +40,68 @@ class ReviewSummarizationAgent:
         Returns:
             List of review dictionaries
         """
-        # Query Pinecone for reviews with the specified business_id in metadata
-        query_response = self.index.query(
-            vector=[0] * 384,  # Dummy vector, we're using metadata filtering
-            filter={"business_id": {"$eq": business_id}},
-            top_k=limit,
-            include_metadata=True
-        )
+        print(f"Searching for reviews with business_id: {business_id}")
         
-        # Extract reviews from the response
-        reviews = []
-        for match in query_response.matches:
-            reviews.append({
-                'review_id': match.id,
-                'review_text': match.metadata.get('review_text', ''),
-                'business_id': match.metadata.get('business_id', '')
-            })
+        # Try different filter options with valid operators only
+        filter_options = [
+            {"business_id": {"$eq": business_id}},                      # Exact match on business_id
+            {"business_id": {"$eq": business_id.split(' - ')[0]}},      # Match first part of name before dash
+            {"business_id": {"$eq": business_id.split(' ')[0]}},        # Match first word
+        ]
         
-        return reviews
-    
+        for i, filter_option in enumerate(filter_options):
+            print(f"Trying filter option {i+1}: {filter_option}")
+            query_response = self.index.query(
+                vector=[0] * 384,
+                filter=filter_option,
+                top_k=limit,
+                include_metadata=True
+            )
+            
+            if query_response.matches:
+                print(f"Found {len(query_response.matches)} reviews with filter option {i+1}")
+                reviews = []
+                for match in query_response.matches:
+                    reviews.append({
+                        'review_id': match.id,
+                        'review_text': match.metadata.get('review_text', ''),
+                        'business_id': match.metadata.get('business_id', '')
+                    })
+                return reviews
+        
+        # If no reviews found with any filter, try a more general approach - get all records
+        # and filter client-side for partial matches
+        try:
+            print("Attempting general query without filters")
+            general_query = self.index.query(
+                vector=[0] * 384,
+                top_k=100,  # Get a reasonable number of records
+                include_metadata=True
+            )
+            
+            if general_query.matches:
+                print(f"Found {len(general_query.matches)} total records, checking for matches")
+                business_id_lower = business_id.lower()
+                reviews = []
+                
+                for match in general_query.matches:
+                    match_business_id = match.metadata.get('business_id', '').lower()
+                    # Check for partial matches
+                    if (business_id_lower in match_business_id or 
+                        business_id_lower.split(' ')[0] in match_business_id):
+                        reviews.append({
+                            'review_id': match.id,
+                            'review_text': match.metadata.get('review_text', ''),
+                            'business_id': match.metadata.get('business_id', '')
+                        })
+                
+                print(f"Found {len(reviews)} reviews with client-side filtering")
+                return reviews
+        except Exception as e:
+            print(f"Error in general query: {str(e)}")
+        
+        # Still no reviews found
+        return []
     def generate_summary(self, reviews: List[Dict[str, Any]]) -> str:
         """
         Generate a summary of reviews using Gemini.
@@ -128,7 +171,27 @@ class ReviewSummarizationAgent:
         summary = self.generate_summary(reviews)
         
         return summary
-
+# Add this method to your ReviewSummarizationAgent class
+def list_business_ids(self, limit=20):
+    """List existing business IDs in the index"""
+    try:
+        # Get sample records
+        query_response = self.index.query(
+            vector=[0] * 384,
+            top_k=100,
+            include_metadata=True
+        )
+        
+        # Extract unique business IDs
+        business_ids = set()
+        for match in query_response.matches:
+            if 'business_id' in match.metadata:
+                business_ids.add(match.metadata['business_id'])
+        
+        return list(business_ids)[:limit]  # Return up to 'limit' business IDs
+    except Exception as e:
+        print(f"Error listing business IDs: {str(e)}")
+        return []
 # Function to be called from Streamlit
 def get_review_summary(business_id: str) -> str:
     """

@@ -423,53 +423,41 @@ def display_shop_details(shop_data):
     # Review summary section
     st.subheader("💬 Review Summary")
     
-    # Get identifier for RAG query
-    business_id = None
+    # Get business ID from BUSINESS_ID field
+    business_id = shop_data.get('BUSINESS_ID')
     
-    # Try to get business_id from various possible fields
-    id_fields = ['BUSINESS_ID', 'business_id', 'GOOGLE_ID', 'google_id', 'PLACE_ID', 'place_id', 'CID', 'cid']
-    for field in id_fields:
-        if field in shop_data and shop_data[field] is not None:
-            business_id = shop_data[field]
-            break
+    # Debug mode to help with troubleshooting
+    debug_mode = st.checkbox("Show Debug Info", value=False)
+    if debug_mode:
+        st.write("Business ID:", business_id)
+        
+        # Provide sample IDs from Pinecone
+        sample_ids = [
+            "0x89e37089316eb5663:0x3d5608ce38f956f0",
+            "0x89e37bee9336338:0xa58da4d1718a865",
+            "0x89e37082d2b824eb:0xc9712079ef572421", 
+            "0x89e37103a0008ecb:0x107d299fa6cf29c",
+            "0x89e3716acd458b69:0xceb25fc9b660c4d5"
+        ]
+        
+        selected_id = st.selectbox("Try with a sample business ID:", [""] + sample_ids)
+        if selected_id:
+            business_id = selected_id
+            st.write(f"Using sample ID: {business_id}")
     
-    # Fallback to NAME if no ID is found
-    if business_id is None and 'NAME' in shop_data:
-        business_id = shop_data['NAME']
-    
-    # Initialize review summary session state if it doesn't exist
+    # Initialize review summary session state
     if 'review_summary' not in st.session_state:
         st.session_state.review_summary = {}
     
-    # Display generate summary button
+    # Display generate summary button if we have a business ID
     if business_id:
         # If we don't already have a summary for this business
         if business_id not in st.session_state.review_summary:
             if st.button("Generate Review Summary"):
                 with st.spinner("Analyzing reviews and generating summary..."):
                     try:
-                        # Try to import the module using various methods
-                        try:
-                            # Use the correct file name: rag_agent.py
-                            from api.rag_agent import ReviewSummarizationAgent
-                        except ImportError:
-                            try:
-                                # Try import from current directory
-                                import sys
-                                import os
-                                current_dir = os.path.dirname(os.path.abspath(__file__))
-                                if current_dir not in sys.path:
-                                    sys.path.append(current_dir)
-                                from api.rag_agent import ReviewSummarizationAgent
-                            except (ImportError, NameError):
-                                st.error("Could not import ReviewSummarizationAgent. Make sure rag_agent.py is in the same directory as this app.")
-                                st.info("Please check that you have the rag_agent.py file in your project directory.")
-                                # Show current directory files
-                                st.code("# Current directory files\nimport os\nprint(os.listdir('.'))", language="python")
-                                return
-                        
-                        # Initialize RAG agent
-                        rag_agent = ReviewSummarizationAgent()
+                        # Get RAG agent
+                        rag_agent = get_rag_agent()
                         
                         # Generate summary
                         summary = rag_agent.summarize_business_reviews(business_id)
@@ -477,12 +465,10 @@ def display_shop_details(shop_data):
                         # Store summary
                         st.session_state.review_summary[business_id] = summary
                         
-                        # Use st.rerun() instead of the deprecated experimental_rerun
+                        # Refresh display
                         st.rerun()
                     except Exception as e:
                         st.error(f"Error generating review summary: {str(e)}")
-                        import traceback
-                        st.code(traceback.format_exc())
         
         # Display summary if available
         if business_id in st.session_state.review_summary:
@@ -508,7 +494,19 @@ def display_shop_details(shop_data):
             if not has_topic_info:
                 st.info("Click 'Generate Review Summary' to analyze reviews and get detailed insights.")
     else:
-        st.warning("No identifier available for this coffee shop. Cannot generate review summary.")
+        # If business ID is missing, show warning and option to enter manually
+        st.warning("Business ID not available for this coffee shop.")
+        
+        manual_id = st.text_input("Enter business ID manually:")
+        if manual_id and st.button("Generate with manual ID"):
+            with st.spinner("Analyzing reviews..."):
+                try:
+                    rag_agent = get_rag_agent()
+                    summary = rag_agent.summarize_business_reviews(manual_id)
+                    st.session_state.review_summary[manual_id] = summary
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error: {str(e)}")
 
 # Update the main function to initialize the RAG agent
 def main():
@@ -853,8 +851,17 @@ def owner_analysis_page(vn):
                     SENTIMENT_SCORES_AMBIANCE,
                     PRICE_LEVEL,
                     TYPE,
-                    REVIEW_COUNT  -- Ensure REVIEW_COUNT field is included
-                FROM FINAL_DB.FINAL.COFFEE_SHOPS
+                    REVIEW_COUNT,  -- Ensure REVIEW_COUNT field is included
+                    SENTIMENT_PERCENTAGES_SERVICE_GOOD_PCT,
+                    SENTIMENT_PERCENTAGES_SERVICE_NEUTRAL_PCT,
+                    SENTIMENT_PERCENTAGES_SERVICE_BAD_PCT,
+                    SENTIMENT_PERCENTAGES_FOOD_GOOD_PCT,
+                    SENTIMENT_PERCENTAGES_FOOD_NEUTRAL_PCT,
+                    SENTIMENT_PERCENTAGES_FOOD_BAD_PCT,
+                    SENTIMENT_PERCENTAGES_AMBIANCE_GOOD_PCT,
+                    SENTIMENT_PERCENTAGES_AMBIANCE_NEUTRAL_PCT,
+                    SENTIMENT_PERCENTAGES_AMBIANCE_BAD_PCT
+                                FROM FINAL_DB.FINAL.COFFEE_SHOPS
                 WHERE FULL_ADDRESS LIKE '%Boston%'
                 """
                 
@@ -884,19 +891,53 @@ def owner_analysis_page(vn):
         
         # Create rating data
         sentiment_data = {
-            "Category": ["Overall Rating", "Food Quality", "Service Quality", "Ambiance Experience"],
-            "Average Score": [
-                df["RATING"].mean() / 5,  # Convert 5-star rating to 0-1 range
-                df["SENTIMENT_SCORES_FOOD"].mean(),
-                df["SENTIMENT_SCORES_SERVICE"].mean(),
-                df["SENTIMENT_SCORES_AMBIANCE"].mean()
-            ]
-        }
-        
+        'Category': ['Service', 'Service', 'Service', 'Food', 'Food', 'Food', 'Ambiance', 'Ambiance', 'Ambiance'],
+        'Sentiment': ['Good', 'Neutral', 'Bad'] * 3,
+        'Percentage': [
+            df["SENTIMENT_PERCENTAGES_SERVICE_GOOD_PCT"].mean(),
+            df["SENTIMENT_PERCENTAGES_SERVICE_NEUTRAL_PCT"].mean(),
+            df["SENTIMENT_PERCENTAGES_SERVICE_BAD_PCT"].mean(),
+            df["SENTIMENT_PERCENTAGES_FOOD_GOOD_PCT"].mean(),
+            df["SENTIMENT_PERCENTAGES_FOOD_NEUTRAL_PCT"].mean(),
+            df["SENTIMENT_PERCENTAGES_FOOD_BAD_PCT"].mean(),
+            df["SENTIMENT_PERCENTAGES_AMBIANCE_GOOD_PCT"].mean(),
+            df["SENTIMENT_PERCENTAGES_AMBIANCE_NEUTRAL_PCT"].mean(),
+            df["SENTIMENT_PERCENTAGES_AMBIANCE_BAD_PCT"].mean()
+        ]
+    }
         sentiment_df = pd.DataFrame(sentiment_data)
-        
+
+        pivot_df = sentiment_df.pivot(index='Category', columns='Sentiment', values='Percentage').fillna(0)
+
+        sentiment_colors = {
+            'Good': '#6ab04c',
+            'Neutral': '#f9ca24',
+            'Bad': '#eb4d4b'
+        }
+
+        import plotly.graph_objects as go
+        fig = go.Figure()
+        for sentiment in ['Good', 'Neutral', 'Bad']:
+            fig.add_trace(go.Bar(
+                name=sentiment,
+                x=pivot_df.index,
+                y=pivot_df[sentiment],
+                marker_color=sentiment_colors[sentiment]
+            ))
+
+        fig.update_layout(
+            barmode='stack',
+            title='Sentiment Breakdown by Category',
+            xaxis_title='Category',
+            yaxis_title='Percentage',
+            legend_title='Sentiment',
+            height=500
+        )
+
+        st.plotly_chart(fig, use_container_width=True)
+            
         # Display rating chart
-        st.bar_chart(sentiment_df.set_index("Category"))
+        #st.bar_chart(sentiment_df.set_index("Category"))
         
         # Display highest-rated coffee shops
         st.subheader("Highest Rated Coffee Shops")
