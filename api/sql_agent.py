@@ -169,24 +169,25 @@ class SQLAgent:
         
         # Build the base query
         if is_count_query:
-            query = "SELECT COUNT(*) as restaurant_count FROM restaurants r WHERE 1=1"
+            query = "SELECT COUNT(*) as restaurant_count FROM COFFEE_SHOPS c WHERE 1=1"
         elif is_avg_query:
             query = """
             SELECT 
-                AVG(r.stars) as avg_rating, 
-                AVG(r.food_score) as avg_food_score, 
-                AVG(r.service_score) as avg_service_score, 
-                AVG(r.ambiance_score) as avg_ambiance_score
-            FROM restaurants r
+                AVG(c.RATING) as avg_rating, 
+                AVG(c.SENTIMENT_FOOD) as avg_food_score, 
+                AVG(c.SENTIMENT_SERVICE) as avg_service_score, 
+                AVG(c.SENTIMENT_AMBIANCE) as avg_ambiance_score
+            FROM COFFEE_SHOPS c
             WHERE 1=1
             """
         else:
             query = """
             SELECT 
-                r.name, r.address, r.city, r.stars, r.overall_score, 
-                r.food_score, r.service_score, r.ambiance_score,
-                r.latitude, r.longitude, r.price_range, r.categories
-            FROM restaurants r
+                c.NAME, c.FULL_ADDRESS as address, c.RATING as stars, 
+                c.SENTIMENT_FOOD as food_score, c.SENTIMENT_SERVICE as service_score, c.SENTIMENT_AMBIANCE as ambiance_score,
+                (c.SENTIMENT_FOOD + c.SENTIMENT_SERVICE + c.SENTIMENT_AMBIANCE)/3 as overall_score,
+                c.LATITUDE, c.LONGITUDE, c.PRICE_LEVEL as price_range, c.TYPE as categories
+            FROM COFFEE_SHOPS c
             WHERE 1=1
             """
         
@@ -194,53 +195,50 @@ class SQLAgent:
         if detected_city:
             # Capitalize city name correctly (e.g., "New York" instead of "new york")
             formatted_city = ' '.join(word.capitalize() for word in detected_city.split())
-            query += f" AND r.city = '{formatted_city}'"
+            query += f" AND c.FULL_ADDRESS LIKE '%{formatted_city}%'"
         
         # Add rating filter if detected
         if min_rating:
-            query += f" AND r.stars >= {min_rating}"
+            query += f" AND c.RATING >= {min_rating}"
         
         # Check for restaurant type in the question
         if "restaurant" in question or "restaurants" in question or "places to eat" in question:
-            query += " AND r.categories LIKE '%Restaurant%'"
+            query += " AND c.TYPE LIKE '%Restaurant%'"
         
         # Check for cafe/coffee mentions
         if "cafe" in question or "cafes" in question or "coffee" in question:
-            query += " AND r.categories LIKE '%Cafe%'"
+            query += " AND c.TYPE LIKE '%Cafe%'"
         
         # Check for specific cuisine keywords
         cuisines = ["italian", "chinese", "mexican", "japanese", "thai", "indian", "french"]
         for cuisine in cuisines:
             if cuisine in question:
-                query += f" AND r.categories LIKE '%{cuisine.capitalize()}%'"
+                query += f" AND c.TYPE LIKE '%{cuisine.capitalize()}%'"
         
         # Check for food mentions
         if "food" in question or "delicious" in question:
             if is_top_query:
-                query += " AND r.food_score >= 4.0"
-            query += " ORDER BY r.food_score DESC"
+                query += " AND c.SENTIMENT_FOOD >= 4.0"
+            query += " ORDER BY c.SENTIMENT_FOOD DESC"
         # Check for service mentions
         elif "service" in question or "staff" in question or "waiter" in question:
             if is_top_query:
-                query += " AND r.service_score >= 4.0"
-            query += " ORDER BY r.service_score DESC"
+                query += " AND c.SENTIMENT_SERVICE >= 4.0"
+            query += " ORDER BY c.SENTIMENT_SERVICE DESC"
         # Check for ambiance mentions
         elif "ambiance" in question or "atmosphere" in question or "romantic" in question:
             if is_top_query:
-                query += " AND r.ambiance_score >= 4.0"
-            query += " ORDER BY r.ambiance_score DESC"
+                query += " AND c.SENTIMENT_AMBIANCE >= 4.0"
+            query += " ORDER BY c.SENTIMENT_AMBIANCE DESC"
         # Default ordering
         else:
             if is_top_query:
-                query += " AND r.overall_score >= 4.0"
-            query += " ORDER BY r.overall_score DESC"
+                query += " AND (c.SENTIMENT_FOOD + c.SENTIMENT_SERVICE + c.SENTIMENT_AMBIANCE)/3 >= 4.0"
+            query += " ORDER BY (c.SENTIMENT_FOOD + c.SENTIMENT_SERVICE + c.SENTIMENT_AMBIANCE)/3 DESC"
         
         # Check for specific ambiance/environment preferences
         if "romantic" in question:
-            query += " AND r.ambiance_score >= 4.0"
-        
-        if any(word in question for word in ["family", "kid", "kids", "children"]):
-            query += " AND r.is_family_friendly = TRUE"
+            query += " AND c.SENTIMENT_AMBIANCE >= 4.0"
         
         # Limit the number of results
         limit = 10  # Default limit
@@ -272,17 +270,17 @@ class SQLAgent:
             query = """
             SELECT 
                 COUNT(*) as total_restaurants,
-                AVG(stars) as avg_rating,
-                AVG(food_score) as avg_food_score,
-                AVG(service_score) as avg_service_score,
-                AVG(ambiance_score) as avg_ambiance_score
+                AVG(RATING) as avg_rating,
+                AVG(SENTIMENT_FOOD) as avg_food_score,
+                AVG(SENTIMENT_SERVICE) as avg_service_score,
+                AVG(SENTIMENT_AMBIANCE) as avg_ambiance_score
             FROM 
-                restaurants
+                COFFEE_SHOPS
             """
             
             # Add city filter if specified
             if city:
-                query += f" WHERE city = '{city}'"
+                query += f" WHERE FULL_ADDRESS LIKE '%{city}%'"
             
             # Execute query
             results, _ = self.execute_query(query)
@@ -293,14 +291,14 @@ class SQLAgent:
             # Get rating distribution
             rating_query = """
             SELECT 
-                FLOOR(stars * 2) / 2 as rating_bin,
+                FLOOR(RATING * 2) / 2 as rating_bin,
                 COUNT(*) as count
             FROM 
-                restaurants
+                COFFEE_SHOPS
             """
             
             if city:
-                rating_query += f" WHERE city = '{city}'"
+                rating_query += f" WHERE FULL_ADDRESS LIKE '%{city}%'"
             
             rating_query += """
             GROUP BY 
@@ -315,21 +313,21 @@ class SQLAgent:
             # Get top restaurants
             top_query = """
             SELECT 
-                name, 
-                stars, 
-                food_score, 
-                service_score, 
-                ambiance_score
+                NAME, 
+                RATING as stars, 
+                SENTIMENT_FOOD as food_score, 
+                SENTIMENT_SERVICE as service_score, 
+                SENTIMENT_AMBIANCE as ambiance_score
             FROM 
-                restaurants
+                COFFEE_SHOPS
             """
             
             if city:
-                top_query += f" WHERE city = '{city}'"
+                top_query += f" WHERE FULL_ADDRESS LIKE '%{city}%'"
             
             top_query += """
             ORDER BY 
-                overall_score DESC
+                (SENTIMENT_FOOD + SENTIMENT_SERVICE + SENTIMENT_AMBIANCE)/3 DESC
             LIMIT 10
             """
             
@@ -353,23 +351,21 @@ class SQLAgent:
             List of category counts
         """
         try:
-            # For Snowflake, we'd use SPLIT_TO_TABLE or similar
-            # For simplicity, this example does basic category extraction
+            # 獲取類型分布
             query = """
             SELECT 
-                TRIM(c.value) as category, 
+                TYPE as category, 
                 COUNT(*) as count
             FROM 
-                restaurants r,
-                TABLE(SPLIT_TO_TABLE(r.categories, ',')) c
+                COFFEE_SHOPS
             """
             
             if city:
-                query += f" WHERE r.city = '{city}'"
+                query += f" WHERE FULL_ADDRESS LIKE '%{city}%'"
             
             query += """
             GROUP BY 
-                TRIM(c.value)
+                TYPE
             ORDER BY 
                 count DESC
             LIMIT 15
